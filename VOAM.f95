@@ -1,4 +1,4 @@
-!-- Program written by Pau Besalú and Guillem Pey* - TFM Guillem Pey
+!-- Program written by Pau Besalú and Guillem Pey* - TFM Guillem Pey 
 !-- VOAM.f95 (VoltOhmAmpereMaxwell.f95) 
 !-- OpEEF searcher within the FDB_beta method using the third degree equation and polar spherical coordinates
 Module VOAM
