@@ -1,1 +1,53 @@
+{Job name}
 
+Method: Axis scan=xyz NLOP=dipole
+Thermochemistry: Target barrier=24.00 Stoichiometry=-1 Redox=0 Potential=0.00
+Computation: Initial point=00.00 00.00 00.00 Modulus=100 Trust radius=10 Grid=10
+Extra: tolerance=1E-4
+
+>> FDB parameters
+{Reactant_1 Name}
+Energy
+-2263.112016
+Dipole Moment                              R   N=           3
+        -2.51513415E-01 -5.48256045E-01 -2.62035877E+00
+Polarizability                             R   N=           6
+        3.67765608E+02 -1.36836076E+01  2.83238552E+02 -6.33224475E+00 -5.57240258E+00
+        3.73068693E+02
+HyperPolarizability     R       N=      10
+        1.90789E+03     1.51205E+02     -4.02223E+01 2.46346E+01 -8.52729E+02
+        1.91677E+01     9.32157E+01      5.18310E+02 1.33606E+02  1.37063E+02
+Nuclear
+ 3.8352460E+01 -1.9524464E+00  4.7589460E-01
+-1.9524464E+00  5.0267842E+01  7.1898491E+00
+ 4.7589460E-01  7.1898491E+00  3.4291421E+01
+{Product_1 Name}
+Energy
+-2282.510042
+Dipole Moment                              R   N=           3
+         -5.74228007E-01 -1.00107898E-01  4.93207745E-01
+Polarizability                             R   N=           6
+        4.72417176E+02 -1.91983170E+01  3.04905305E+02 -4.85620432E+01 -1.75451398E+00
+        4.66224875E+02
+HyperPolarizability                        R   N=          10
+        2.37918177E+04 -5.96980968E+02 -2.35370941E+02 -4.01798260E+02 -1.11707711E+04
+        3.26545504E+02 -2.04164429E+02  3.50241233E+03  5.92323191E+02  2.08232507E+03
+Nuclear
+  1.3481557E+02  6.4945365E+00 -2.9094508E+01
+  6.4945365E+00  1.7407981E+02 -7.7852788E+00
+ -2.9094508E+01 -7.7852788E+00  5.8931059E+01
+{Small_Molecule_1 Name}
+Energy
+19.430799291498
+Dipole  Moment  R       N=      3.00E+00
+        0.00E+00        0.00E+00        -2.08251E+00
+Polarizability  R       N=      6
+        0.00E+00        0.00E+00        0.00E+00        0.00E+00        0.00E+00
+        -35.6049
+HyperPolarizability     R       N=      10
+        0.00E+00        0.00E+00        0.00E+00        0.00E+00        0.00E+00
+        0.00E+00        0.00E+00        0.00E+00        0.00E+00        -1.14175E+02
+Nuclear
+0.00E+00        0.00E+00        0.00E+00
+0.00E+00        0.00E+00        0.00E+00
+0.00E+00        0.00E+00        0.1289
