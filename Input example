@@ -1,8 +1,8 @@
 {Job name}
 
-Method: Axis scan=xyz NLOP=dipole
-Thermochemistry: Target barrier=24.00 Stoichiometry=-1 Redox=0 Potential=0.00
-Computation: Initial point=00.00 00.00 00.00 Modulus=100 Trust radius=10 Grid=10
+Method: Axis scan=ZZZ NLOP=beta
+Thermochemistry: Target barrier=15.00 Stoichiometry=-1 Redox=0 Potential=0.00
+Computation: Initial point=00.00 00.00 00.00 Modulus=100 Trust radius=10 Grid=500
 Extra: tolerance=1E-4
 
 >> FDB parameters
