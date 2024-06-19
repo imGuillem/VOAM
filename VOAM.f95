@@ -1,17 +1,16 @@
-!-- Program written by Pau Besalú and Guillem Pey* - TFM Guillem Pey 
+!-- Program written by Pau Besalú and Guillem Pey* - TFM Guillem Pey
 !-- VOAM.f95 (VoltOhmAmpereMaxwell.f95) 
 !-- OpEEF searcher within the FDB_beta method using the third degree equation and polar spherical coordinates
 Module VOAM
 implicit none
 ! Non-linear optical properties (NLOPs) and energies
-    double precision :: E_0,E_r,E_p,E_f,target_barrier
-    double precision :: E_mu,E_alpha
-    integer, dimension (3) :: axis = 0
-    double precision, dimension(3) :: F,mu,mu_r,mu_p,mu_f
-    double precision, dimension(3,3) :: alpha,alpha_r,alpha_p,alpha_f,alpha_tmp
-    double precision, dimension(3,3,3) :: beta,beta_r,beta_p,beta_f
+    double precision :: E_0,E_r,E_p,E_lig_r,E_lig_p,target_barrier
+    double precision, dimension(3) :: F,mu,mu_r,mu_p,mu_lig,mu_lig_r,mu_lig_p
+    double precision, dimension(3,3) :: alpha,alpha_r,alpha_p,alpha_lig,alpha_lig_r,alpha_lig_p,alpha_tmp
+    double precision, dimension(3,3,3) :: beta,beta_r,beta_p,beta_lig,beta_lig_r,beta_lig_p
 ! VOAM keywords
-    double precision :: redox_potential,c_i,radius,max_radius,tol
+    integer, dimension (3) :: axis = 0
+    double precision :: redox_potential,radius,max_radius,tol
     integer order_nlop,n_dim,x_axis,y_axis,z_axis
     integer stoi,redox_coef,grid 
     integer gpc
@@ -29,65 +28,65 @@ implicit none
     double precision :: eps = cmplx(-0.5d0,dsqrt(3.0d0/4.0d0))
     integer i,j,k
 contains
-    Function E_FDB(F,order_nlop)
-    implicit none
-    double precision :: E_FDB,Fx,Fy,Fz,theta,phi
-    !double precision :: E_0,E_mu,E_alpha,redox_potential
-    double precision, dimension(3) :: mu,mu_f,F
-    double precision, dimension(3,3) :: alpha,alpha_f
-    double precision, dimension(3,3,3) :: beta,beta_f
-    integer i,j,k,order_nlop,redox_coef,stoi
+    !Function E_FDB(F,order_nlop)
+    !implicit none
+    !double precision :: E_FDB,Fx,Fy,Fz,theta,phi
+    !!double precision :: E_0,E_mu,E_alpha,redox_potential
+    !double precision, dimension(3) :: mu,mu_lig,F
+    !double precision, dimension(3,3) :: alpha,alpha_lig
+    !double precision, dimension(3,3,3) :: beta,beta_lig
+    !integer i,j,k,order_nlop,redox_coef,stoi
 
-    E_FDB=E_0-abs(redox_coef)*redox_potential
-    !-- Just in case
-    !if (mu_f(1).lt.0) then
-    !    write(*,*) "WARNING! LIGAND NOT PROPERL ALIGNED! STOP!"
+    !E_FDB=E_0-abs(redox_coef)*redox_potential
+    !!-- Just in case
+    !!if (mu_lig(1).lt.0) then
+    !!    write(*,*) "WARNING! LIGAND NOT PROPERL ALIGNED! STOP!"
+    !!    stop
+    !!end if
+    !!-- Linear term
+    !do i=1,3
+    !    E_FDB=E_FDB-mu(i)*F(i)
+    !end do
+    !    !-- Adding solvent correction
+    !E_FDB=E_FDB+stoi*mu_lig(1)*sqrt(F(1)**2+F(2)**2+F(3)**2)
+    !E_mu=E_FDB
+
+    !!-- Quadratic term
+    !do i=1,3
+    !    do j=1,3
+    !        E_FDB=E_FDB-0.5d0*alpha_lig(i,j)*F(i)*F(j)
+    !    end do
+    !end do
+    !    !-- Adding solvent correction
+    !E_FDB=E_FDB+stoi*0.5d0*alpha_lig(1,1)*(sqrt(F(1)**2+F(2)**2+F(3)**2))**2
+    !E_alpha=E_FDB
+
+    !!-- Cubic term
+    !do i=1,3
+    !    do j=1,3
+    !        do k=1,3
+    !            E_FDB=E_FDB+(1.0d0/6.0d0)*beta(i,j,k)*F(i)*F(j)*F(k)
+    !        end do
+    !    end do
+    !end do
+    !    !-- Adding solvent correction
+    !E_FDB=E_FDB-stoi*(1.0d0/6.0d0)*beta(1,1,1)*(sqrt(F(1)**2+F(2)**2+F(3)**2))**3
+    !!-- Choosing the approximation of the run
+    !if (order_nlop.eq.0) then
+    !    write(*,*) "WARNING: You must choose an approximation to optimise the system. STOP!"
+    !    stop
+    !else if (order_nlop.eq.1) then
+    !    E_FDB=E_mu
+    !else if (order_nlop.eq.2) then
+    !    E_FDB=E_alpha
+    !else if (order_nlop.eq.3) then
+    !    E_FDB=E_FDB
+    !else
+    !    write(*,*) "WARNING: NOT A VALID APPROXIMATION KEYWORD. STOP"
     !    stop
     !end if
-    !-- Linear term
-    do i=1,3
-        E_FDB=E_FDB-mu(i)*F(i)
-    end do
-        !-- Adding solvent correction
-    E_FDB=E_FDB+stoi*mu_f(1)*sqrt(F(1)**2+F(2)**2+F(3)**2)
-    E_mu=E_FDB
-
-    !-- Quadratic term
-    do i=1,3
-        do j=1,3
-            E_FDB=E_FDB-0.5d0*alpha_f(i,j)*F(i)*F(j)
-        end do
-    end do
-        !-- Adding solvent correction
-    E_FDB=E_FDB+stoi*0.5d0*alpha_f(1,1)*(sqrt(F(1)**2+F(2)**2+F(3)**2))**2
-    E_alpha=E_FDB
-
-    !-- Cubic term
-    do i=1,3
-        do j=1,3
-            do k=1,3
-                E_FDB=E_FDB+(1.0d0/6.0d0)*beta(i,j,k)*F(i)*F(j)*F(k)
-            end do
-        end do
-    end do
-        !-- Adding solvent correction
-    E_FDB=E_FDB-stoi*(1.0d0/6.0d0)*beta(1,1,1)*(sqrt(F(1)**2+F(2)**2+F(3)**2))**3
-    !-- Choosing the approximation of the run
-    if (order_nlop.eq.0) then
-        write(*,*) "WARNING: You must choose an approximation to optimise the system. STOP!"
-        stop
-    else if (order_nlop.eq.1) then
-        E_FDB=E_mu
-    else if (order_nlop.eq.2) then
-        E_FDB=E_alpha
-    else if (order_nlop.eq.3) then
-        E_FDB=E_FDB
-    else
-        write(*,*) "WARNING: NOT A VALID APPROXIMATION KEYWORD. STOP"
-        stop
-    end if
-    return
-    End
+    !return
+    !End
 
 !###################################################################################################
     !=========================================================================!
@@ -118,9 +117,9 @@ contains
     !-- http://olewitthansen.dk/Mathematics/The_cubic_equation.pdf
     E_FF=E_0-abs(redox_coef)*redox_potential
     tmp_E=E_FF;tmp_E=tmp_E-target_barrier/6.2751d2                  !-- Energy 
-    mu(gpc)=mu(gpc)+stoi*mu_f(gpc)                                  !-- Dipole moment
-    alpha(gpc,gpc)=alpha(gpc,gpc)+stoi*alpha_f(gpc,gpc)             !-- Polarizability matrix
-    beta(gpc,gpc,gpc)=beta(gpc,gpc,gpc)+stoi*beta_f(gpc,gpc,gpc)    !-- Hyperpolarizability tensor
+    mu(gpc)=mu(gpc)+mu_lig(gpc)                                       !-- Dipole moment
+    alpha(gpc,gpc)=alpha(gpc,gpc)+alpha_lig(gpc,gpc)                  !-- Polarizability matrix
+    beta(gpc,gpc,gpc)=beta(gpc,gpc,gpc)+beta_lig(gpc,gpc,gpc)    !-- Hyperpolarizability tensor
     tmp_mu=mu(gpc);tmp_alpha=0.5d0*alpha(gpc,gpc)                   !-- Tmp values for variations in case of constant fields
 
                 !--                 Step of the do loop according to the gpc value:
@@ -334,8 +333,7 @@ contains
             if (Guillem(7).eqv..TRUE.) then    
                 do i=1,3
                     write(*,'(" Root",xI1,":",xF18.6," +i",xF18.6)') i,root(i)
-                    check(i)=bbeta*real(root(i))**3.0d0+aalpha*real(root(i))**2.0d0+mmu*real(root(i))+eenergy
-                    write(*,'("      Check:",xF10.8)') abs(check(i))
+                    write(*,'("      Check:",xF10.8)') abs(bbeta*real(root(i))**3.0d0+aalpha*real(root(i))**2.0d0+mmu*real(root(i))+eenergy)
                 end do
             end if
             write(*,*) "--------------------------------------------------------------------------------------------------------------------  "
@@ -376,8 +374,7 @@ contains
             if (Guillem(7).eqv..TRUE.) then
                 do i=1,3
                     write(*,'(" Root",xI1,":",xF18.6," +i",xF18.6)') i,root(i)
-                    check(i)=bbeta*real(root(i))**3.0d0+aalpha*real(root(i))**2.0d0+mmu*real(root(i))+eenergy
-                    write(*,'("      Check:",xF10.8)') abs(check(i))
+                    write(*,'("      Check:",xF10.8)') abs(bbeta*real(root(i))**3.0d0+aalpha*real(root(i))**2.0d0+mmu*real(root(i))+eenergy)
                 end do
             end if 
             write(*,*) "--------------------------------------------------------------------------------------------------------------------  "
@@ -421,8 +418,7 @@ contains
             if (Guillem(7).eqv..TRUE.) then 
                 do i=1,3
                    write(*,'(" Root",xI1,":",xF18.6," +i",xF18.6)') i,root(i)
-                   check(i)=bbeta*real(root(i))**3.0d0+aalpha*real(root(i))**2.0d0+mmu*real(root(i))+eenergy
-                   write(*,'("      Check:",xF10.8)') abs(check(i))
+                   write(*,'("      Check:",xF10.8)') abs(bbeta*real(root(i))**3.0d0+aalpha*real(root(i))**2.0d0+mmu*real(root(i))+eenergy)
                 end do
             end if
             write(*,*) "--------------------------------------------------------------------------------------------------------------------  "
@@ -475,7 +471,7 @@ contains
         upper=nint(0.5d0*axis(1)+1.5d0*axis(2)+0.5d0*axis(3))
         lower=nint(0.5d0*axis(1)+0.5d0*axis(2)+2.5d0*axis(3))
             !-- axis_scan=XY --> (upper,lower)==(2,1);  axis_scan=XZ --> (upper,lower)==(1,3);  axis_scan=YZ --> (upper,lower)==(2,3)
-        mu(upper)=mu(upper)+stoi*mu_f(3);mu(lower)=mu(lower)+stoi*mu_f(3)
+        mu(upper)=mu(upper)+mu_lig(3);mu(lower)=mu(lower)+mu_lig(3)
         E_FF=E_0-abs(redox_coef)*redox_potential-(target_barrier/6.2751d2)-mu(gpc)*F(gpc)
         if (Guillem(5).eqv..TRUE.) then
             write(*,'(" (μ-FDB-(",A2,",",A2,")) Equation to solve: 0 = ",F12.6," +",xF12.6,xA2," +",xF12.6,xA2)') &
@@ -535,7 +531,7 @@ contains
 
                 if (abs(mmu).lt.tol) then ! Angular-mmu is neglegible --> ax**2+b=0
                     sign_aalpha=sign(1.0d0,real(aalpha));sign_eenergy=sign(1.0d0,real(eenergy))
-                    if(sign_aalpha.eq.sign_eenergy) then ! The solution is complex. Skipped
+                    if(sign_aalpha.eq.sign_eenergy) then ! The solution is proved to be complex. Skipped
                         if(Guillem(6).eqv..TRUE.) then ! Print the specific solutions
                             !-- Coded in this way so it is not stored in memory and is computed on-the-fly
                             write(*,'(" (α-FDB-",A2,A2," - Positive complex root:",xF12.6," +i",xF12.6," a.u")') axis_name(2-axis(1)),axis_name(2+axis(3)),+1.0d0*sqrt(-eenergy/aalpha)
@@ -889,6 +885,7 @@ contains
                         root(i,1)=real(tmp_root(1,1))
                         if (abs(tmp_root(2,1)).lt.root(i,1)) root(i,1)=abs(tmp_root(2,1))
                     end if
+
                 !###############################################################
                     !-- There three different real roots
                 !###############################################################
@@ -945,7 +942,7 @@ contains
         !-- For FDB_α/β 
     integer order_nlop
     if (order_nlop.eq.1) then
-        mu=mu+stoi*mu_f(3)
+        mu=mu+mu_lig(3)
         E_FF=E_0-abs(redox_coef)*redox_potential-(target_barrier/6.2751d2)
         if (Guillem(5).eqv..TRUE.) then
             write(*,'(" (μ-FDB-XYZ) The equation to be solved is: 0 =",xF7.3," +",xF7.3,xA2," +",xF7.3,xA2," +",xF7.3,xA2)') &
@@ -1010,13 +1007,25 @@ implicit none
 character*10 ET,axis_scan,approximation,stoichiometry
 character*80 file ! Name of the file
 character*100 line,title ! Characters to read the input file
-character*80 name_reactant,name_product,name_ligand ! Name of the involved chemical species
 character*10 mister
+character*80, dimension(10) :: name_reactant_reactant
+character*80, dimension(10) :: name_product_product
+character*80, dimension(10) :: name_reactant_ligand
+character*80, dimension(10) :: name_product_ligand
+!---- Algebraic elements for the NLOP reading
+double precision :: E_iter
+double precision, dimension(3) :: mu_iter
+double precision, dimension(3,3) :: alpha_iter
+double precision, dimension(3,3,3) :: beta_iter
 !---- Integers for the input reading
 integer :: index_NLOP,index_scan !-- Indices  for the method line
 integer :: index_barrier,index_stoi,index_redox,index_potential !-- Indices for the thermochemistry line
 integer :: index_initial,index_modulus,index_trust,index_grid
 integer :: index_tol
+!---- Integers for the NLOP reading
+!integer :: index_reactant_reactant,index_product_product
+!integer :: index_ligand_reactant,index_ligand_product
+integer :: n,m
 !---- Integers for Guillem
 integer :: index_Guillem
 !---- Other
@@ -1030,40 +1039,44 @@ integer :: index_Guillem
 !-------------------------------------------------------------------!
 call getarg(1,file)
 open (2,file=TRIM(file),status="old")
-!open (3,file="VOAM.csv",status="new") --> Only for the 2D scans!!!!!!!
 
-!=============================================================================!
-!              Conditional statements for Guillem's purposes                  !
+!==============================================================================!
+!               Conditional statements for Guillem's purposes                  !
     Guillem(1)=print_NLOP_react;Guillem(2)=print_NLOP_prod
     Guillem(3)=print_NLOP_lig;  Guillem(4)=print_coeffs;
     Guillem(5)=print_EQ;        Guillem(6)=print_sols; 
     Guillem(7)=print_checks;    !Guillem(8)=
     !Guillem(9)=                !Guillem(10)=
-!                                                                             !
-!=============================================================================!
+!                                                                              !
+!==============================================================================!
 
 
 !================================KEYWORDS BLOCK================================!
+!                                                                              !
 !-----------------------Basic/Reaction settings of the program-----------------!
 read(2,'(A80)') title
 read(2,'(A80)') line !-- Line before the "route section"
+
+    !======================================================================!
+                        !   Reading the method line   !
+    !======================================================================!
+
 read(2,'(A100)') line !-- Line corresponding to the 'Method' line
-!------------------------------------------------------------------------------!
-        !============================!
-        !   Reading the method line  !
-        !============================!
 if(index(line,"Method:").ne.0.or.index(line,"method:").ne.0) then ! Try reading the axis scan and the NLOPs
-    !--- Indices for the method-related keywords
+
+        !--- Indices for the method-related keywords
     index_scan=index(line,"scan") !-- Detecting the first coincidence for the 'scan' word to detect the scanning axis
     index_NLOP=index(line,"NLOP") !-- Same as index_scan
+
     index_Guillem=index(line,"Guillem")             ! It's me, hi! I'm the developer, it's me
     index_Guillem=index_Guillem+index(line,"SUDO")
     index_Guillem=index_Guillem+index(line,"sudo")
+
         !-- Reading axis scan for the minimization
-    if(index(line,"Axis scan=").ne.0.or.index(line,"axis scan=").ne.0) then
+    if (index(line,"Axis scan=").ne.0.or.index(line,"axis scan=").ne.0) then
         read(line(index_scan+5:index_scan+8),*) axis_scan
         select case(axis_scan)
-                !====================== 1D CASES ==========================!
+                !====================== 1D CASES === M.f95.swp=======================!
             case ("00X","0X0","X00","0x0","x00","00x","X","x","XXX","xxx","xx","XX")
                     !-- Solve for R but with X-oriented NLOP
                 !-- Theta is PI halves and phi is zero, unless stated in the initial point
@@ -1091,13 +1104,12 @@ if(index(line,"Method:").ne.0.or.index(line,"method:").ne.0) then ! Try reading 
                 stop 
         end select
     else
-        ! Potser generar un cas default?
         write(*,*) "Bad input scan keyword! STOP!"
         stop
     end if
-    !
+
         !-- Reading the order of NLOP
-    if(index(line,"NLOP=").ne.0.or.index(line,"nlop=").ne.0) then
+    if (index(line,"Taylor=").ne.0.or.index(line,"taylor=").ne.0.or.index(line,"TAYLOR=").ne.0) then
         read(line(index_NLOP+5:index_NLOP+10),*) approximation
         select case(approximation)
             case ("Dipole","dipole","mu","Mu")
@@ -1108,8 +1120,6 @@ if(index(line,"Method:").ne.0.or.index(line,"method:").ne.0) then ! Try reading 
                 order_nlop=3
             case ("Gamma","gamma")
                 order_nlop=4
-            case ("Delta","delta")
-                order_nlop=5
             case default
                 write(*,*) "Bad input approximation! STOP!"
         end select
@@ -1117,17 +1127,18 @@ if(index(line,"Method:").ne.0.or.index(line,"method:").ne.0) then ! Try reading 
         write(*,*) "Bad input NLOP keyword! STOP!"
         stop
     end if
-    !
+
+        !-- Reading the SUDO keywords
     if (index(line,"SUDO=").ne.0.or.index(line,"sudo=").ne.0) then ! Guillem is here
         read(line(index_Guillem+5:index_Guillem+15),*) mister
         select case (mister)
             case ("Guillem")
                 Guillem=.TRUE.
-            case ("Reactant")
+            case ("Reactant","reactant","Reactants","reactants","Reacts","reacts","react","React")
                 Guillem(1)=.TRUE.
-            case ("Product")
+            case ("Product","product","Products","products","prod","prods","Prod","Prods")
                 Guillem(2)=.TRUE.
-            case ("Ligand")
+            case ("Ligand","ligand","Ligands","ligands","Lig","lig","Ligs","ligs")
                 Guillem(3)=.TRUE.
             case ("Coefficient","coefficient","coeff")
                 Guillem(4)=.TRUE.
@@ -1145,22 +1156,29 @@ if(index(line,"Method:").ne.0.or.index(line,"method:").ne.0) then ! Try reading 
     else ! No sudo
         continue
     end if
-    !
+
 else
     write(*,*) "Error reading the method line! Stop!"
     stop
 end if
+
 !------------------------------------------------------------------------------!
+!##############################################################################!
+!------------------------------------------------------------------------------!
+
+    !=====================================================================!
+                    !   Reading the thermochemistry line   !
+    !=====================================================================!
+
 read(2,'(A100)') line !-- Line corresponding to the 'Thermochemistry' line
-            !=====================================!
-            !   Reading the thermochemistry line  !
-            !=====================================!
 if(index(line,"Thermochemistry:").ne.0.or.index(line,"thermochemistry:").ne.0) then ! Try reading thermodynamics 
-    !--- Indices for the thermochemistry-related keywords
+
+        !--- Indices for the thermochemistry-related keywords
     index_barrier=index(line,"barrier")
     index_stoi=index(line,"chiometry")
     index_redox=index(line,"edox")
     index_potential=index(line,"tential")
+
         ! -- Reading the thermodynamic barrier (in kcal/mol) that is going to be scanned
     if(index(line,"Target barrier=").ne.0.or.index(line,"target barrier=").ne.0) then
         read(line(index_barrier+8:index_barrier+13),*) target_barrier
@@ -1171,7 +1189,7 @@ if(index(line,"Thermochemistry:").ne.0.or.index(line,"thermochemistry:").ne.0) t
     else
         continue
     end if
-    !
+
         ! -- Reading the stoichiometry of the ligand: whether it acts as a reactant, as a product or there is none involved
     if(index(line,"Stoichiometry=").ne.0.or.index(line,"stoichiometry=").ne.0) then
         read(line(index_stoi+10:index_stoi+12),*) stoi
@@ -1188,10 +1206,9 @@ if(index(line,"Thermochemistry:").ne.0.or.index(line,"thermochemistry:").ne.0) t
                 stop
         end select
     else
-        !stoi=0 --> Default?
         stop
     end if
-    !
+
         ! -- Reading whether there is an ET process, or not, and how it behaves: oxidation or reduction
     if(index(line,"Redox=").ne.0.or.index(line,"redox=").ne.0) then
         read(line(index_redox+5:index_redox+6),*) redox_coef
@@ -1208,10 +1225,10 @@ if(index(line,"Thermochemistry:").ne.0.or.index(line,"thermochemistry:").ne.0) t
                 stop
         end select
     else
-        !-- Default value if it is not found
+        write(*,*) "Redox coeficient not found. Set to 0"
         redox_coef=0
     end if
-    !
+    
     if(index(line,"Potential=").ne.0.or.index(line,"potential=").ne.0) then
         read(line(index_potential+8:index_potential+13),*) redox_potential ! vs SHE !-- Reformular segons redox_coeff
                     !-- S'ha de mirar si s'ha de corregir la correcció de la fórmula
@@ -1231,11 +1248,16 @@ else
     write(*,*) "Error in reading the Thermochemistry line! Stop!"
     stop
 end if
+
 !------------------------------------------------------------------------------!
+!##############################################################################!
+!------------------------------------------------------------------------------!
+
+    !======================================================================!
+                        !   Reading the computation line   !
+    !======================================================================!
+
 read(2,'(A100)') line !-- Line corresponding to the 'Computation' line
-                !=================================!
-                !   Reading the computation line  !
-                !=================================!
 if(index(line,"Computation:").ne.0.or.index(line,"computation:").ne.0) then
     index_initial=index(line,"oint")
     index_modulus=index(line,"dulus")
@@ -1257,17 +1279,6 @@ if(index(line,"Computation:").ne.0.or.index(line,"computation:").ne.0) then
         stop
     end if
     !
-    if(index(line,"Trust radius=").ne.0.or.index(line,"trust radius=").ne.0) then
-        read(line(index_trust+5:index_trust+7),*) c_i
-        if(c_i.lt.0) then ! Negative trust radius? Do you trust this program so much?
-            write(*,*) "Invalid trust radius value. Stop!"
-            stop
-        end if
-    else
-        write(*,*) "Bad input of trust radius! STOP!"
-        stop
-    end if
-    !
     if(index(line,"Grid=").ne.0.or.index(line,"grid=").ne.0) then
         read(line(index_grid+4:index_grid+8),*) grid
         if(grid.ge.1E3) write(*,*) "Warning: grid too dense for 3D"
@@ -1281,11 +1292,16 @@ else
     write(*,*) "Bad input line! Stop!"
     stop
 end if
+
 !-----------------------------------------------------------------------------!
+!#############################################################################!
+!-----------------------------------------------------------------------------!
+
+    !=====================================================================!
+                    !       Reading the extra line    !
+    !=====================================================================!
+
 read(2,'(A100)') line !-- Line corresponding to the 'Extra' line
-                !=================================!
-                !       Reading the extra line    !
-                !=================================!
 if(index(line,"Extra:").ne.0.or.index(line,"extra:").ne.0) then ! Tolerance line exits
     index_tol=index(line,"lerance")
     read(line(index_tol+8:index_tol+14),*) tol
@@ -1296,51 +1312,22 @@ if(index(line,"Extra:").ne.0.or.index(line,"extra:").ne.0) then ! Tolerance line
 else
     tol=1E-4
 end if
-    !===================== Specific Guillem keywords
-!read(2,'(A100)') line !-- Line corresponding to MY keywords
-!if(index(line,"Guillem:").ne.0.or.index(line,"guillem").ne.0) then ! Specific keywords for my purpose
-!    index_pNLOP=index(line,"pNLOP") 
-!    if(index(line,"SUDO").ne.0.or.index(line,"sudo").ne.0) then ! Activate SUDO access
-!        print_NLOP_react=.TRUE.
-!        print_NLOP_prod=.TRUE.
-!        print_NLOP_lig=.TRUE.
-!    end if
-!    if(index(line,"pNLOP=").ne.0) then !-- Print NLOPs
-!        read(line(index_pNLOP+6:index_pNLOP+7) pNLOP
-!        select case(pNLOP)
-!            case(1)
-!                print_NLOP_react=.true.
-!            case(2)
-!                print_NLOP_prod=.true.
-!            case(3)
-!                print_NLOP_lig=.true.
-!            case(4)
-!                print_NLOP_react=.true.;print_NLOP_prod=.true.
-!            case default
-!                continue
-!        end select         
-!else
-!    continue
-!end if
 
 !-- Defining the electric fields vectors in spherical polar coordinates for the following scan
 !-----------------------------------------------------------------------------!
         F(1)=Fx(theta,phi);F(2)=Fy(theta,phi);F(3)=Fz(theta)
         axis_name(1)="Fx";axis_name(2)="Fy";axis_name(3)="Fz"    
-                if(sudo.eqv..TRUE.) Guillem = .TRUE.
 !-----------------------------------------------------------------------------!
 
-read(2,'(A80)') line ! DO NOT TOUCH THIS LINE! SOMEHOW IT MAKES IT WORK
-read(2,'(A80)') line ! Line after the "route section": corresponds to ">> FDB Parameters"
-!===========================END OF ROUTE SECTION===============================!
-
-
+!==============================================================================!
             !-----------------Echoing the input-----------------!
+!==============================================================================!
+
 write(*,*) "-------------------------------------------------------------------"
 write(*,*) 
 write(*,*) "            The input for this run is:"
 write(*,'(" Central point ((x,y,z)·10^-4 a.u)",xF8.3,xF8.3,xF8.3)') x0,y0,z0
-write(*,'(" Radius of ",F7.5," a.u and confidence radius of",xF4.1"%")') radius,c_i
+write(*,'(" Maximum radius of ",F7.5," a.u for the iterative resolutions")') radius
 write(*,'(" Number of points ",I5," (1D) ",I10," (2D) ",I15," (3D) ")') grid,grid**2,grid**3
 if (redox_potential.ne.0.0) then
     write(*,'(" Potential (a.u)",xF8.3)') redox_potential
@@ -1355,23 +1342,81 @@ else if (order_nlop.eq.3) then
 end if
 write(*,*) 
 write(*,*) "------------------------------------------------------------------"
-read(2,'(A80)') name_reactant; read(2,*) line
-!do while(index(line,"-----Products-----") 
-!end do
-!-----------------Chemical species-----------------!
-call readvalues(E_r,mu_r,alpha_r,beta_r,alpha_tmp)
-    ! -- Just to check --
+
+read(2,'(A80)') line ! DO NOT TOUCH THIS LINE! SOMEHOW IT MAKES IT WORK
+!===========================END OF ROUTE SECTION===============================!
+
+!==============================================================================!
+!##############################################################################!
+!==============================================================================!
+
+!==============================================================================!
+                 !   Reading the reactant NLOPs   !
+!==============================================================================!
+
+read(2,'(A80)') line ! Line after the blank line right after the keywords section --> Begin reading reactant NLOPs
+                     ! Stands for:  -#-#-#- Chemical species: Reactants -#-#-#-
+if(index(line,"#- Chemical species: Reactants -#").ne.0.or.index(line,"#- chemical species: reactants -#").ne.0 &
+& .or.index(line,"#- Chemical species: reactants -#").ne.0.or.index(line,"#- chemical species: Reactants -#").ne.0) then
+
+    n=1     !-- At least there is going to be one reactant species
+    E_iter=0.0d0; mu_iter=0.0d0; alpha_iter=0.0d0; beta_iter=0.0d0
+
+    read(2,'(A80)') name_reactant_reactant(n)
+    read(2,*) line
+    call readvalues(E_r,mu_r,alpha_r,beta_r)
+    
+    do!while (index(line,"#- Chemical species: Products -#").eq.0.or.index(line,"#- chemical species: products -#").eq.0 &
+    !& .or.index(line,"#- Chemical species: products -#").eq.0.or.index(line,"#- chemical species: Products -#").eq.0)
+        E_iter=E_iter+E_r
+        do i=1,3
+            mu_iter(i)=mu_iter(i)+mu_r(i)
+            do j=1,3
+                alpha_iter(i,j)=alpha_iter(i,j)+alpha_r(i,j)
+                do k=1,3
+                    beta_iter(i,j,k)=beta_iter(i,j,k)+beta_r(i,j,k)
+                end do
+            end do
+        end do  
+        read(2,'(A80)') line
+        if (index(line,"#- Chemical species: Products -#").eq.0.or.index(line,"#- chemical species: products -#").eq.0 &
+            & .or.index(line,"#- Chemical species: products -#").eq.0.or.index(line,"#- chemical species: Products -#").eq.0) then
+            exit
+        else
+            n=n+1
+            name_reactant_reactant=trim(line)
+            read(2,*) line
+            call readvalues(E_r,mu_r,alpha_r,beta_r)
+        end if
+    end do
+else
+    write(*,*) "No input reactant chemical species! Stop!"
+    call sleep(2)
+    write(*,*) "If you consider this might not be true, remember adding:"
+    write(*,*) " ' -#-#-#- Chemical species: Reactants -#-#-#- ' "
+    write(*,*) "Right after the blank line after the keywords section"
+    write(*,*)
+    stop
+end if
+
+    !--- Redefinition of the original names for the later data handling
+E_r=E_iter; mu_r=mu_iter; alpha_r=alpha_iter; beta_r=beta_iter
+
+    !--- Print the (joint) properties of the reactants
 if(Guillem(1).eqv..TRUE.) then
-    write(*,*) "=========================================="
-    write(*,*) "Properties for reactants (R)"
-    write(*,*) "------------------------------------------"
-    write(*,*) "Dipole moment"
+    write(*,*) "=============================================================================="
+    write(*,*) "                     Joint properties for the reactants (R)"
+    write(*,'(" Reactants: ",xA)') (name_reactant_reactant(i),i=1,n)
+    write(*,*) "  --------------------------------------------------------------------------  "
+    write(*,*) "                            Dipole moment"
     write(*,*) (mu_r(i),i=1,3)
-    write(*,*) "Polarizability matrix"
+    write(*,*)
+    write(*,*) "                        Polarizability matrix"
     do i=1,3
             write(*,*) (alpha_r(i,j),j=1,3)
     end do
-    write(*,*) "First hyperpolarizability tensor"
+    write(*,*)
+    write(*,*) "                     First hyperpolarizability tensor"
     write(*,*) "X _ _"
     do j=1,3
             write(*,*) (beta_r(1,j,k),k=1,3)
@@ -1384,25 +1429,85 @@ if(Guillem(1).eqv..TRUE.) then
     do j=1,3
             write(*,*) (beta_r(3,j,k),k=1,3)
     end do
-    write(*,*) "=========================================="
-end if
-!-----------------------------------------------------------------------------!
-read(2,'(A80)') name_product; read(2,*) line
-!do while(index(line,"----Ligands products-----")
-!end do
-call readvalues(E_p,mu_p,alpha_p,beta_p,alpha_tmp)
-if(Guillem(2).eqv..TRUE.) then
-    write(*,*) "=========================================="
+    write(*,*) "=============================================================================="
     write(*,*)
-    write(*,*) "Properties for products (P)"
-    write(*,*) "------------------------------------------"
-    write(*,*) "Dipole moment"
+end if
+
+!==============================================================================!
+!##############################################################################!
+!==============================================================================!
+
+!==============================================================================!
+                 !   Reading the product NLOPs   !
+!==============================================================================!
+
+if (index(line,"#- Chemical species: Products -#").ne.0.or.index(line,"#- chemical species: products -#").ne.0 &
+& .or.index(line,"#- Chemical species: products -#").ne.0.or.index(line,"#- chemical species: Products -#").ne.0) then
+    
+    n=1 !-- At least there is going to be one reactant speciest
+    E_iter=0.0d0; mu_iter=0.0d0; alpha_iter=0.0d0; beta_iter=0.0d0
+    
+    read(2,'(A80)') name_product_product(n)
+    read(2,*) line
+    call readvalues(E_p,mu_p,alpha_p,beta_p)
+
+    do !while (index(line,"#- Small molecules: Reactants -#").eq.0.or.index(line,"#- small molecules: reactants -#").eq.0 &
+    !& .or.index(line,"#- Small molecules: reactants -#").eq.0.or.index(line,"#- small molecules: Reactants -#").eq.0) 
+        E_iter=E_iter+E_p
+        do i=1,3
+            mu_iter(i)=mu_iter(i)+mu_p(i)
+            do j=1,3
+                alpha_iter(i,j)=alpha_iter(i,j)+alpha_p(i,j)
+                do k=1,3
+                    beta_iter(i,j,k)=beta_iter(i,j,k)+beta_p(i,j,k)
+                end do
+            end do
+        end do
+        read(2,'(A80)') line
+        if (index(line,"#- END OF FILE -#").ne.0.or.index(line,"#- End of file -#").ne.0.or.index(line,"#- end of file -#").ne.0) then
+            write(*,*) "Warning! No small molecules at the input!"
+            E_lig_p=0.0d0; mu_lig_p=0.0d0; alpha_lig_p=0.0d0; beta_lig_p=0.0d0
+            E_lig_r=0.0d0; mu_lig_r=0.0d0; alpha_lig_r=0.0d0; beta_lig_r=0.0d0
+            goto 99999
+        else if (index(line,"#- Small molecules: Reactants -#").ne.0.or.index(line,"#- small molecules: reactants -#").ne.0 &
+        & .or.index(line,"#- Small molecules: reactants -#").ne.0.or.index(line,"#- small molecules: Reactants -#").ne.0) then
+            exit
+        else
+            n=n+1
+            name_product_product(n)=trim(line)
+            read(2,*)
+            call readvalues(E_p,mu_p,alpha_p,beta_p) 
+        end if
+    end do
+else
+    write(*,*) "No input product chemical species! Stop!"
+    call sleep(2)
+    write(*,*) "If you consider this might not be true, remember adding:"
+    write(*,*) " ' -#-#-#- Chemical species: Products -#-#-#- ' "
+    write(*,*) "Right after the blank line of the last line of the nuclear relaxation polarizability matrix reactant"
+    write(*,*)
+    stop
+end if
+
+    !--- Redefinition of the original names for the later data handling
+E_p=E_iter; mu_p=mu_iter; alpha_p=alpha_iter; beta_p=beta_iter
+
+    !--- Print the (joint) properties of the products
+if(Guillem(2).eqv..TRUE.) then
+    write(*,*) "=============================================================================="
+    write(*,*)
+    write(*,*) "                     Joint properties for the products (P)"
+    write(*,*) (name_product_product(i),i=1,n)
+    write(*,*) "------------------------------------------------------------------------------"
+    write(*,*) "                            Dipole moment"
     write(*,*) (mu_p(i),i=1,3)
-    write(*,*) "Polarizability matrix"
+    write(*,*)
+    write(*,*) "                        Polarizability matrix"
     do i=1,3
             write(*,*) (alpha_p(i,j),j=1,3)
     end do
-    write(*,*) "First hyperpolarizability tensor"
+    write(*,*)
+    write(*,*) "                    First hyperpolarizability tensor"
     write(*,*) "X _ _"
     do j=1,3
             write(*,*) (beta_p(1,j,k),k=1,3)
@@ -1415,127 +1520,179 @@ if(Guillem(2).eqv..TRUE.) then
     do j=1,3
             write(*,*) (beta_p(3,j,k),k=1,3)
     end do
-    write(*,*) "=========================================="
+    write(*,*) "=============================================================================="
+    write(*,*)
 end if
 
-!--- For ligands the subroutine does not apply:
-!--- We are considering ligands orient along their dipole moment and always stabilising the chemical system
-!--- Therefore, it has to be done "manually"
-    !--- Generalitzar la lectura dels lligands i diferenciar si son reactius o productes
-read(2,'(A80)') name_ligand; read(2,*) line
-read(2,*) E_f
-read(2,*) line
-read(2,*) mu_f(1),mu_f(2),mu_f(3)
+!==============================================================================!
+!##############################################################################!
+!==============================================================================!
 
-if (mu_f(3).ge.0.0.or.mu_f(2).ge.0.0.or.mu_f(1).ge.0.0) then ! Check whether the solvent is properly oriented
-    continue
-    if(mu_f(3).eq.0.0.or.mu_f(2).eq.0.0.or.mu_f(1).eq.0.0) then !
-        continue
-        if(mu_f(3).eq.0.0.or.mu_f(2).eq.0.0.or.mu_f(1).eq.0.0) then
-            ! The molecule is properly oriented!
-            continue
-        else
-            write(*,*) "WARNING! The molecule seems that is not properly oriented"
-        end if
-    else
-        write(*,*) "WARNING! The molecule seems that is not properly oriented"
-    end if
-else
-    write(*,*) "WARNING! The ligand molecule must be oriented towards your reaction axis!"
-    write(*,*) "Please, insert a positive value of dipole moment for this molecule"
-end if
+!==============================================================================!
+                !   Reading the small molecules NLOPs   !
+!==============================================================================!
 
-        ! Unique conversion for ligands
-    mu_f(1)=mu_f(3);mu_f(2)=mu_f(3)
-read(2,*) line
-read(2,*) alpha_f(1,1),alpha_f(1,2),alpha_f(2,2),alpha_f(1,3),alpha_f(2,3)
-read(2,*) alpha_f(3,3)
-        ! Unique conversion for ligands
-    alpha_f(1,1)=alpha_f(3,3);alpha_f(2,2)=alpha_f(3,3)
-        ! Conversion of alpha to its transposed values
-    alpha_f(2,1)=alpha_f(1,2);alpha_f(3,1)=alpha_f(1,3);alpha_f(3,2)=alpha_f(2,3)
-read(2,*) line
-read(2,*) beta_f(1,1,1),beta_f(1,1,2),beta_f(1,2,2),beta_f(2,2,2),beta_f(1,1,3)
-read(2,*) beta_f(1,2,3),beta_f(2,2,3),beta_f(1,3,3),beta_f(2,3,3),beta_f(3,3,3)
-        ! Unique conversion for ligands
-    beta_f(1,1,1)=beta_f(3,3,3);beta_f(2,2,2)=beta_f(3,3,3)
-        ! Conversion of beta to its transposed values
-                        !xxy
-    beta_f(2,1,1)=beta_f(1,1,2);beta_f(1,2,1)=beta_f(1,1,2)
-                        !xyy
-    beta_f(2,1,2)=beta_f(1,2,2);beta_f(2,2,1)=beta_f(1,2,2)
-                        !xxz
-    beta_f(3,1,1)=beta_f(1,1,3);beta_f(1,3,1)=beta_f(1,1,3)
-                        !yyz
-    beta_f(3,2,2)=beta_f(2,2,3);beta_f(2,3,2)=beta_f(2,2,3)
-                        !xzz
-    beta_f(3,1,3)=beta_f(1,3,3);beta_f(3,3,1)=beta_f(1,3,3)
-                        !yzz
-    beta_f(3,3,2)=beta_f(2,3,3);beta_f(3,2,3)=beta_f(2,3,3)
-                        !xyz
-    beta_f(1,3,2)=beta_f(1,2,3);beta_f(2,1,3)=beta_f(1,2,3)
-    beta_f(2,3,1)=beta_f(1,2,3);beta_f(3,1,2)=beta_f(1,2,3)
-    beta_f(3,2,1)=beta_f(1,2,3)
-read(2,*) line
-read(2,*) alpha_tmp(1,1),alpha_tmp(1,2),alpha_tmp(1,3)
-read(2,*) alpha_tmp(2,1),alpha_tmp(2,2),alpha_tmp(2,3)
-read(2,*) alpha_tmp(3,1),alpha_tmp(3,2),alpha_tmp(3,3)
-do i=1,3
-        do j=1,3
-                alpha_f(i,j)=alpha_f(i,j)+alpha_tmp(i,j)
+        !--- Reading the NLOPs for the reactants small molecules
+if (index(line,"#- Small molecules: Reactants -#").ne.0.or.index(line,"#- small molecules: reactants -#").ne.0 &
+& .or.index(line,"#- small molecules: Reactants -#").ne.0.or.index(line,"#- Small molecules: reactants -#").ne.0) then
+
+    n=1 !-- At least there is going to be one small molecule if this option is considered
+    E_iter=0.0d0; mu_iter=0.0d0; alpha_iter=0.0d0; beta_iter=0.0d0
+
+    read(2,'(A10)') name_reactant_ligand(n)
+    read(2,*) line
+    call readvalues_ligands(tol,E_lig_r,mu_lig_r,alpha_lig_r,beta_lig_r)
+    
+    do  !while (index(line,"#- Small molecules: Products -#").eq.0.or.index(line,"#- small molecules: products").eq.0 &
+        !& .or.index(line,"#- small molecules: Products -#").eq.0.or.index(line,"#- Small molecules: products -#").eq.0)
+        E_iter=E_iter+E_lig_r
+        do i=1,3
+            mu_iter(i)=mu_iter(i)+mu_lig_r(i)
+            do j=1,3
+                alpha_iter(i,j)=alpha_iter(i,j)+alpha_lig_r(i,j)
+                do k=1,3
+                    beta_iter(i,j,k)=beta_iter(i,j,k)+beta_lig_r(i,j,k)
+                end do
+            end do
         end do
+        read(2,'(A80)') line
+        if (index(line,"#- END OF FILE -#").ne.0.or.index(line,"#- End of file -#").ne.0.or.index(line,"#- end of file -#").ne.0) then
+            write(*,*) "Warning! No small molecules detected at the products."
+            E_lig_p=0.0d0; mu_lig_p=0.0d0; alpha_lig_p=0.d0; beta_lig_p=0.0d0
+            goto 99999
+        else if (index(line,"#- Small molecules: Products -#").ne.0.or.index(line,"#- small molecules: products -#").ne.0 &
+        & .or.index(line,"#- Small molecules: products -#").ne.0.or.index(line,"#- small molecules: Products -#").ne.0) then
+            !-- The reaction contains small molecules at the reactants 
+            exit
+        else
+            n=n+1
+            name_reactant_ligand(n)=trim(line)
+            read(2,*) line
+            call readvalues_ligands(tol,E_lig_r,mu_lig_r,alpha_lig_r,beta_lig_r)
+        end if
+    end do
+else
+    ! No reactant ligand was found
+    read(2,*) line
+end if
+     
+    !--- Redefinition of the original names for the later data handling
+E_lig_r=E_iter; mu_lig_r=mu_iter; alpha_lig_r=alpha_iter; beta_lig_r=beta_iter
+
+        !--- Reading the NLOPs for the products small molecules
+if (index(line,"#- Small molecules: Products -#").ne.0.or.index(line,"#- small molecules: products -#").ne.0 &
+& .or.index(line,"#- small molecules: Products -#").ne.0.or.index(line,"#- Small molecules: products -#").ne.0) then
+
+
+    m=1 !-- At least there is going to be one small molecule if this option is considered
+    E_iter=0.0d0; mu_iter=0.0d0; alpha_iter=0.0d0; beta_iter=0.0d0
+    
+    read(2,'(A10)') name_product_ligand(m)
+    read(2,*) line
+    call readvalues_ligands(tol,E_lig_p,mu_lig_p,alpha_lig_p,beta_lig_p)
+     
+    do!while (index(line,"#- END OF FILE -#").eq.0.or.index(line,"#- End of file -#").eq.0.or.index(line,"#- end of file -#").eq.0)
+        E_iter=E_iter+E_lig_p
+        do i=1,3
+            mu_iter(i)=mu_iter(i)+mu_lig_p(i)
+            do j=1,3
+                alpha_iter(i,j)=alpha_iter(i,j)+alpha_lig_p(i,j)
+                do k=1,3
+                    beta_iter(i,j,k)=beta_iter(i,j,k)+beta_lig_p(i,j,k)
+                end do
+            end do
+        end do
+        read(2,'(A80)') line
+        if (index(line,"#- END OF FILE -#").ne.0.or.index(line,"#- End of file -#").ne.0.or.index(line,"#- end of file -#").ne.0) then 
+            !-- End of the file. Reading complete
+            exit
+        else
+            m=m+1
+            name_product_ligand(m)=trim(line)
+            read(2,*) line
+            call readvalues_ligands(tol,E_lig_p,mu_lig_p,alpha_lig_p,beta_lig_p) 
+        end if
+    end do
+else
+    !--- End of file
+    read(2,*) line
+end if
+
+    !--- Redefinition of the original names for the later data handling
+E_lig_p=E_iter; mu_lig_p=mu_iter; alpha_lig_p=alpha_iter; beta_lig_p=beta_iter
+do i=1,3
+    mu_lig(i)=mu_lig_p(i)-mu_lig_r(i)
+    do j=1,3
+        alpha_lig(i,j)=alpha_lig_p(i,j)-alpha_lig_r(i,j)
+        do k=1,3
+            beta_lig(i,j,k)=beta_lig_p(i,j,k)-beta_lig_r(i,j,k)
+        end do
+    end do
 end do
 
-if( Guillem(3).eqv..TRUE.) then
-    write(*,*) "=========================================="
+    !--- Print the joint properties of the small molecules
+if(Guillem(3).eqv..TRUE.) then
+    write(*,*) "=============================================================================="
     write(*,*)
-    write(*,*) "Properties for fakes (F)"
-    write(*,*) "------------------------------------------"
-    write(*,*) "Dipole moment"
-    write(*,*) (mu_f(i),i=1,3)
-    write(*,*) "Polarizability matrix"
+    write(*,*) "                Joint properties for the small molecules (Lig)"
+    write(*,'(" Reactants: ",Ax)') (trim(name_reactant_ligand(i)),i=1,n)
+    write(*,'(" Products:  ",Ax)') (trim(name_product_ligand(i)),i=1,m)
+    write(*,*) "------------------------------------------------------------------------------"
+    write(*,*) "                            Dipole moment"
+    write(*,*) (mu_lig_p(i)-mu_lig_r(i),i=1,3)
+    write(*,*)
+    write(*,*) "                        Polarizability matrix"
     do i=1,3
-            write(*,*) (alpha_f(i,j),j=1,3)
+            write(*,*) (alpha_lig_p(i,j)-alpha_lig_r(i,j),j=1,3)
     end do
-    write(*,*) "First hyperpolarizability tensor"
+    write(*,*)
+    write(*,*) "                    First hyperpolarizability tensor"
     write(*,*) "X _ _"
     do j=1,3
-            write(*,*) (beta_f(1,j,k),k=1,3)
+            write(*,*) (beta_lig_p(1,j,k)-beta_lig_r(1,j,k),k=1,3)
     end do
     write(*,*) "Y _ _"
     do j=1,3
-            write(*,*) (beta_f(2,j,k),k=1,3)
+            write(*,*) (beta_lig_p(2,j,k)-beta_lig_r(2,j,k),k=1,3)
     end do
     write(*,*) "Z _ _"
     do j=1,3
-            write(*,*) (beta_f(3,j,k),k=1,3)
+            write(*,*) (beta_lig_p(3,j,k)-beta_lig_r(3,j,k),k=1,3)
     end do
-    write(*,*) "=========================================="
+    write(*,*) "=============================================================================="
+    write(*,*)
 end if
 
-!-----------------System properties-----------------!
-mu=0.0; alpha=0.0; beta=0.0
-E_0=E_p-E_r-stoi*E_f ! Energy in atomic units
+!==============================================================================!
+!##############################################################################!
+!==============================================================================!
+    
+!==============================================================================!
+          !   Computing the molecular properties of the system   !
+!==============================================================================!
+
+99999 continue
+E_0=E_p-E_r+E_lig_p-E_lig_r ! Energy in atomic units
 do i=1,3
-    mu(i)=mu_p(i)-mu_r(i)
+    mu(i)=mu_p(i)-mu_r(i)+mu_lig_p(i)-mu_lig_r(i)
     do j=1,3
-        alpha(i,j)=alpha_p(i,j)-alpha_r(i,j)
+        alpha(i,j)=alpha_p(i,j)-alpha_r(i,j)+alpha_lig_p(i,j)-alpha_lig_r(i,j)
         do k=1,3
-            beta(i,j,k)=beta_p(i,j,k)-beta_r(i,j,k)
+            beta(i,j,k)=beta_p(i,j,k)-beta_r(i,j,k)+beta_lig_p(i,j,k)-beta_lig_r(i,j,k)
         end do
     end do
 end do
+
     !-- Echoing the properties of the run
 write(*,*)
 write(*,*) "=============================================================================="
 write(*,'("     Title of the job: ",xA80)') title
 write(*,*) "------------------------------------------------------------------------------"
 write(*,*)
-write(*,'(" Reaction studied",xA18,"+",xI2,"*",xA9,"--->",xA18)') name_reactant,-1*stoi,name_ligand,name_product
-write(*,*)
+!write(*,'(" Reaction studied",xA18,"+",xI2,"*",xA9,"--->",xA18)') name_reactant,-1*stoi,name_ligand,name_product
+!write(*,*)
 write(*,*) "------------------------------------------------------------------------------"
 write(*,*)
-write(*,'(" Stoichiometry of the ligand:",xxI2)') stoi
 write(*,'(" Target barrier for the study:",xF6.2," kcal/mol")') target_barrier
 write(*,*) 
 write(*,*) "=============================================================================="
@@ -1543,25 +1700,25 @@ write(*,*) "     Thermodynamics and non-linear optical properties of the system"
 write(*,*) "------------------------------------------------------------------------------"
 write(*,'("    Gibbs free energy (ΔG)",xF15.4,x"kcal/mol")') E_0*6.2751d2
 write(*,*) "            Dipole moment vector (μ)"
-write(*,'(xxxxxE11.4,xxxxxE11.4,xxxxxE11.4)') (mu(i)+stoi*mu_f(i),i=1,3)
+write(*,'(xxxxxE11.4,xxxxxE11.4,xxxxxE11.4)') (mu(i)+mu_lig_p(i)-mu_lig_r(i),i=1,3)
 write(*,*)
 write(*,*) "          Polarizability matrix (α)"
 do i=1,3
-        write(*,'(xxxxxE11.4,xxxxxE11.4,xxxxxE11.4)') (alpha(i,j)+stoi*alpha_f(i,j),j=1,3)
+        write(*,'(xxxxxE11.4,xxxxxE11.4,xxxxxE11.4)') (alpha(i,j)+alpha_lig_p(i,j)-alpha_lig_r(i,j),j=1,3)
 end do
 write(*,*)
 write(*,*) "      First hyperpolarizability tensor (β)"
 write(*,*) "X _ _"
 do j=1,3
-        write(*,'(xxxxxE11.4,xxxxxE11.4,xxxxxE11.4)') (beta(1,j,k)+stoi*beta_f(1,j,k),k=1,3)
+        write(*,'(xxxxxE11.4,xxxxxE11.4,xxxxxE11.4)') (beta(1,j,k)+beta_lig_p(1,j,k)-beta_lig_r(1,j,k),k=1,3)
 end do
 write(*,*) "Y _ _"
 do j=1,3
-        write(*,'(xxxxxE11.4,xxxxxE11.4,xxxxxE11.4)') (beta(2,j,k)+stoi*beta_f(2,j,k),k=1,3)
+        write(*,'(xxxxxE11.4,xxxxxE11.4,xxxxxE11.4)') (beta(2,j,k)+beta_lig_p(2,j,k)-beta_lig_r(2,j,k),k=1,3)
 end do
 write(*,*) "Z _ _"
 do j=1,3
-        write(*,'(xxxxxE11.4,xxxxxE11.4,xxxxxE11.4)') (beta(3,j,k)+stoi*beta_f(3,j,k),k=1,3)
+        write(*,'(xxxxxE11.4,xxxxxE11.4,xxxxxE11.4)') (beta(3,j,k)+beta_lig_p(3,j,k)-beta_lig_r(3,j,k),k=1,3)
 end do
 write(*,*)
 write(*,*) "------------------------------------------------------------------------------"
@@ -1579,6 +1736,7 @@ write(*,*) "                           Please wait..."
 write(*,*) 
 write(*,*)
 write(*,*) "======================================================================================================================"
+stop
 !=============================================================================!
 !----------------------------VOAM STARTS HERE---------------------------------!
 !=============================================================================!
@@ -1606,7 +1764,7 @@ write(*,*)
 write(*,*) 
 End
 !------------------------------------------------------------------------------!
-Subroutine readvalues(E_i,mu_i,alpha_i,beta_i,alpha_tmp)
+Subroutine readvalues(E_i,mu_i,alpha_i,beta_i)
 implicit none
 character*100 line
 double precision :: E_i
@@ -1618,6 +1776,70 @@ integer i,j
 read(2,*) E_i
 read(2,*) line
 read(2,*) mu_i(1),mu_i(2),mu_i(3)
+read(2,*) line
+read(2,*) alpha_i(1,1),alpha_i(1,2),alpha_i(2,2),alpha_i(1,3),alpha_i(2,3)
+read(2,*) alpha_i(3,3)
+        ! Conversion of alpha to its transposed values
+alpha_i(2,1)=alpha_i(1,2);alpha_i(3,1)=alpha_i(1,3);alpha_i(3,2)=alpha_i(2,3)
+
+read(2,*) line
+read(2,*) beta_i(1,1,1),beta_i(1,1,2),beta_i(1,2,2),beta_i(2,2,2),beta_i(1,1,3)
+read(2,*) beta_i(1,2,3),beta_i(2,2,3),beta_i(1,3,3),beta_i(2,3,3),beta_i(3,3,3)
+        ! Conversion of beta to its transposed values
+                                !xxy
+        beta_i(2,1,1)=beta_i(1,1,2);beta_i(1,2,1)=beta_i(1,1,2)
+                                !xyy
+        beta_i(2,1,2)=beta_i(1,2,2);beta_i(2,2,1)=beta_i(1,2,2)
+                                !xxz
+        beta_i(3,1,1)=beta_i(1,1,3);beta_i(1,3,1)=beta_i(1,1,3)
+                                !yyz
+        beta_i(3,2,2)=beta_i(2,2,3);beta_i(2,3,2)=beta_i(2,2,3)
+                                !xzz
+        beta_i(3,1,3)=beta_i(1,3,3);beta_i(3,3,1)=beta_i(1,3,3)
+                                !yzz
+        beta_i(3,3,2)=beta_i(2,3,3);beta_i(3,2,3)=beta_i(2,3,3)
+                                !xyz
+        beta_i(1,3,2)=beta_i(1,2,3);beta_i(2,1,3)=beta_i(1,2,3)
+        beta_i(2,3,1)=beta_i(1,2,3);beta_i(3,1,2)=beta_i(1,2,3)
+        beta_i(3,2,1)=beta_i(1,2,3)
+read(2,*) line
+read(2,*) alpha_tmp(1,1),alpha_tmp(1,2),alpha_tmp(1,3)
+read(2,*) alpha_tmp(2,1),alpha_tmp(2,2),alpha_tmp(2,3)
+read(2,*) alpha_tmp(3,1),alpha_tmp(3,2),alpha_tmp(3,3)
+do i=1,3
+    do j=1,3
+        alpha_i(i,j)=alpha_i(i,j)+alpha_tmp(i,j)
+    end do
+end do
+End
+!##############################################################################!
+Subroutine readvalues_ligands(tol,E_i,mu_i,alpha_i,beta_i)
+implicit none
+character*100 line
+double precision :: E_i,tol
+double precision, dimension (3) :: mu_i
+double precision, dimension (3,3) :: alpha_i,alpha_tmp
+double precision, dimension (3,3,3) :: beta_i
+integer i,j
+
+read(2,*) E_i
+read(2,*) line
+read(2,*) mu_i(1),mu_i(2),mu_i(3)
+
+if (mu_i(3).ge.0.0d0) then !and.abs(mu_i(3)).gt.tol) then
+    continue
+    !if (abs(mu_i(1)).lt.tol.and.abs(mu_i(2)).lt.tol) then
+    !   mu_i(1)=0.0d0; mu_i(2)=0.0d0 
+    !else
+    !    write(*,*) "Warning! The X and Y components of the dipole moment are not neglegible!"
+    !end if
+else !if (mu_i(3).lt.0.0d0.and.abs(mu_i(3)).gt.tol) then
+    write(*,*) "Warning! One of the input small molecules is not properly oriented!"
+    write(*,*) "The Z component of the dipole moment should be positive."
+    write(*,*)
+    continue
+end if
+
 read(2,*) line
 read(2,*) alpha_i(1,1),alpha_i(1,2),alpha_i(2,2),alpha_i(1,3),alpha_i(2,3)
 read(2,*) alpha_i(3,3)
