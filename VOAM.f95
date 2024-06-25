@@ -5,12 +5,14 @@ Module VOAM
 implicit none
 ! Non-linear optical properties (NLOPs) and energies
     double precision :: E_0,E_r,E_p,E_lig_r,E_lig_p,target_barrier
-    double precision, dimension(3) :: F,mu,mu_r,mu_p,mu_lig,mu_lig_r,mu_lig_p
+    double precision, dimension(3) :: F,initial_position
+    double precision, dimension(3) :: mu,mu_r,mu_p,mu_lig,mu_lig_r,mu_lig_p
     double precision, dimension(3,3) :: alpha,alpha_r,alpha_p,alpha_lig,alpha_lig_r,alpha_lig_p,alpha_tmp
     double precision, dimension(3,3,3) :: beta,beta_r,beta_p,beta_lig,beta_lig_r,beta_lig_p
 ! VOAM keywords
     integer, dimension (3) :: axis = 0
     double precision :: redox_potential,radius,max_radius,tol
+    double precision :: x0,y0,z0,theta,phi
     integer order_nlop,n_dim,x_axis,y_axis,z_axis
     integer stoi,redox_coef,grid 
     integer gpc
@@ -18,10 +20,12 @@ implicit none
     logical, dimension(10) :: Guillem = .FALSE.
     logical :: sudo = .FALSE.
     logical :: print_NLOP_react,print_NLOP_prod,print_NLOP_lig ! Guillem(1-3)
-    logical :: print_coeffs = .FALSE. ! Guillem(4)
-    logical :: print_EQ = .FALSE. ! Guillem(5)
-    logical :: print_sols = .FALSE. ! Guillem(6)
-    logical :: print_checks = .FALSE. ! Guillem(7)
+    logical :: print_coeffs = .FALSE.   ! Guillem(4)
+    logical :: print_EQ = .FALSE.       ! Guillem(5)
+    logical :: print_sols = .FALSE.     ! Guillem(6)
+    logical :: print_checks = .FALSE.   ! Guillem(7)
+    logical :: print_mins = .FALSE.     ! Guillem(8)
+    logical :: print_bubble = .FALSE.   ! Guillem(9)
 ! Others
     character*2,dimension(3) :: axis_name
     double precision :: PI = 4.0d0*datan(1.0d0)
@@ -94,33 +98,35 @@ contains
     !=========================================================================!
 !###################################################################################################
 
-    Subroutine VOAM_1D(Guillem,F,gpc,tol,radius,axis,axis_name,order_nlop)
+    Subroutine VOAM_1D(Guillem,order_nlop,gpc,radius,axis,initial_position,axis_name,tol)
     implicit none
     logical,dimension(10) :: Guillem
-    double precision, dimension (3) :: F
+    double precision, dimension (3) :: F,initial_position
     character*2,dimension(3) :: axis_name
     integer, dimension(3) :: axis
-    double precision :: E_FF,tmp_E,tmp_mu,tmp_alpha,radius
+    double precision :: tmp_energy,tmp_mu,tmp_alpha
+    double precision :: radius
     integer step,gpc,order_nlop
         !---Specific parameters for the 3rd degree solver---!
-    integer i,n
+    integer i,n,sign_eenergy,sign_aalpha
     double complex, dimension(3) :: root
-
     double complex :: eenergy,mmu,aalpha,bbeta
     double complex :: p,q,mark,root1,root2,root3
-
     double precision :: tol,discriminant
     double precision :: root_1,root_2,root_3,half_root1,half_root2,min_root
     double precision :: omega,angle,pp,qq,markk,markkk
 
     !--         Reference of the 3rd degree solution:
     !-- http://olewitthansen.dk/Mathematics/The_cubic_equation.pdf
-    E_FF=E_0-abs(redox_coef)*redox_potential
-    tmp_E=E_FF;tmp_E=tmp_E-target_barrier/6.2751d2                  !-- Energy 
-    mu(gpc)=mu(gpc)+mu_lig(gpc)                                       !-- Dipole moment
-    alpha(gpc,gpc)=alpha(gpc,gpc)+alpha_lig(gpc,gpc)                  !-- Polarizability matrix
-    beta(gpc,gpc,gpc)=beta(gpc,gpc,gpc)+beta_lig(gpc,gpc,gpc)    !-- Hyperpolarizability tensor
-    tmp_mu=mu(gpc);tmp_alpha=0.5d0*alpha(gpc,gpc)                   !-- Tmp values for variations in case of constant fields
+
+        !-- Definition of the oriented NLOPs 
+    tmp_energy=E_0-abs(redox_coef)*redox_potential-target_barrier/6.2751d2  !-- Energy
+    mu(gpc)=mu(gpc)+mu_lig(gpc)                                             !-- Dipole moment
+    alpha(gpc,gpc)=alpha(gpc,gpc)+alpha_lig(gpc,gpc)                        !-- Polarizability matrix
+    beta(gpc,gpc,gpc)=beta(gpc,gpc,gpc)+beta_lig(gpc,gpc,gpc)               !-- Hyperpolarizability tensor
+    
+        !-- Initialization of the iterable NLOPs
+    tmp_mu=mu(gpc);tmp_alpha=0.5d0*alpha(gpc,gpc)                           !-- Tmp values for variations in case of constant fields
 
                 !--                 Step of the do loop according to the gpc value:
                 !-- Generated through as a two-valued function that can only yield values of 1 or 2
@@ -130,25 +136,29 @@ contains
             ! X_axis--> gpc=1            ; Y_axis--> gpc=2            ; Z_axis--> gpc=3
             ! X_axis--> axis(1)=1        ; Y-axis--> axis(2)=2        ; Z_axis--> axis(3)=3
 
-                !-- "General" formula for the computation of the parameters of the equations within the FDB beta method
-                !-- Beta tensor components are changed in sign because of G16  
+        !-- Declaration of the constant fields
+    F(1+axis(1))=initial_position(1+axis(1));F(3-axis(3))=initial_position(3-axis(3))
+    max_radius=dsqrt(radius**2-F(1+axis(1))**2-F(3-axis(3))**2)
+     
+        !-- "General" formula for the computation of the parameters of the equations within the FDB beta method
     do i=(1+axis(1)),(3-axis(3)),step
         do j=(1+axis(1)),(3-axis(3)),step
-            tmp_E=tmp_E-mu(i)*radius*F(i)-0.5d0*alpha(i,j)*(radius**2)*F(i)*F(j)+(1.0d0/6.0d0)*(radius**3)*beta(i,i,i)*F(i)**3+0.5d0*(radius**3)*beta(i,i,j)*F(j)*F(i)**2 
+                !-- Constant-field energy coefficient
+            tmp_energy=tmp_energy-mu(i)*F(i)-0.5d0*alpha(i,j)*F(i)*F(j)-(1.0d0/6.0d0)*beta(i,i,i)*F(i)**3-0.5d0*beta(i,i,j)*F(j)*F(i)**2 
     
-            tmp_mu=tmp_mu+alpha(gpc,i)*radius*F(i)-0.5d0*beta(gpc,i,j)*radius*F(i)*F(j)
+                !-- Constant-field dipole moment coefficient
+            tmp_mu=tmp_mu+alpha(gpc,i)*F(i)+0.5d0*beta(gpc,i,j)*F(i)*F(j)
 
-            tmp_alpha=tmp_alpha-0.5d0*beta(gpc,gpc,i)*radius*F(i) 
+                !-- Constant-field polarizability matrix coefficient
+            tmp_alpha=tmp_alpha+0.5d0*beta(gpc,gpc,i)*F(i) 
         end do
     end do
 
-        !-- Declaration of each parameter as a complex number for its proper handling
-    eenergy=cmplx(tmp_E,0.0d0)
-    mmu=-cmplx(tmp_mu,0.0d0) !-- Change of sign because of the series expansion definition
-    aalpha=-cmplx(tmp_alpha,0.0d0) !-- Change of sign because of the series expansion definition
-    bbeta=(1.0d0/6.0d0)*cmplx(beta(gpc,gpc,gpc),0.0d0) !-- Gaussian already changes the sign of the beta tensor, and then later changed by the FDB expansion.
-                                                       !   So, it is a positive value. 
-
+        !-- Declaration of each parameter as a complex number for its proper handling: defined as negative because of the expansion coefficients
+    eenergy=cmplx(tmp_energy,0.0d0)
+    mmu=-cmplx(tmp_mu,0.0d0)
+    aalpha=-cmplx(tmp_alpha,0.0d0)
+    bbeta=-(1.0d0/6.0d0)*cmplx(beta(gpc,gpc,gpc),0.0d0) 
     write(*,'(" Target barrier to be solved:",xF6.2," kcal/mol")') target_barrier
     if(Guillem(4).eqv..TRUE.) then
         write(*,*)
@@ -172,114 +182,124 @@ contains
         stop
     end if
 
-!===============================================================================
-!###############################################################################
-!===============================================================================
+!================================ μ-VOAM-1D ==========================================    
 
-        !===== μ-FDB-1D solution ------ General solution for 1st degree equation
-    if (order_nlop.eq.1.or.(order_nlop.gt.1.and.abs(aalpha).lt.real(tol).and.abs(bbeta).lt.real(tol)**2)) then
-        if(Guillem(5).eqv..TRUE.) then ! Print the equation to be solved
+        ! --- General solution for 1st degree equation ---
+    if (order_nlop.eq.1.) then
+            !-- Print the equation to be solved
+        if(Guillem(5).eqv..TRUE.) then
             write(*,'(" (μ-FDB-",A2,") - Equation to solve":,xF12.6"x^1 +",xF12.6,"x^0 = 0")') axis_name(gpc),real(mmu),real(eenergy)
         end if
-        if (order_nlop.gt.1.and.abs(aalpha).lt.real(tol).and.abs(bbeta).lt.real(tol)**2) then
-            write(*,*) "---------------------------------------------"
-            write(*,*) "    Alternative first order solution"
-            write(*,*) "---------------------------------------------"
-        end if
-        root1=-real(eenergy)/real(mmu)
-        if (real(root1).gt.max_radius) then
-            write(*,*) "The solution is outside of the proposed radius"
+
+            !-- Check whether the solution is lower than the maximum radius
+        root_1=-real(eenergy)/real(mmu)
+        if (root_1.le.max_radius) then
+            write(*,'(" (μ-FDB-",A2,") - The minimum field strength is ",A2,"=",xF18.2,"(*10^-4) a.u")') axis_name(gpc),axis_name(gpc),real(root1)*1.0d4
+            write(*,*)
         else
-            write(*,'(" The minimum field for the FDB-1D,μ approximation is ",A2,"=",xF18.2,"(*10^-4 a.u)")') axis_name(gpc),real(root1)*1.0d4
-        end if
-        if (Guillem(6).eqv..TRUE.) then
-            write(*,'(" (μ-FDB-",A2,") - Specific solution:",xF20.6," a.u")') axis_name(gpc),real(root1)
+            write(*,'(" (μ-FDB-",A2,") - Maximum radius:",xF10.6)') axis_name(gpc),max_radius
+            write(*,'(" (μ-FDB-",A2,") - The solution is outside of the proposed radius: ",A2," = ",xF18.6,"(*10^-4) a.u)")') axis_name(gpc),axis_name(gpc),min_root*1.0d4
             write(*,*)
         end if
-    return
     end if  
-        !===== μ-FDB-1D solution -----------------------------------------------
 
-!===============================================================================
-!###############################################################################
-!===============================================================================
+!================================ μ-VOAM-1D ==========================================    
+!################################################################################################################################
+!################################################################################################################################
+!################################################################################################################################
+!################################################################################################################################
+!================================ α-VOAM-1D ==========================================    
 
-        !===== α-FDB-1D solution(s) --- General solution for 2nd degree equation
-    if (order_nlop.eq.2.or.(order_nlop.gt.2.and.abs(bbeta).lt.real(tol)**2)) then
-
+        ! --- General solution for 2nd degree equation ---
+    if (order_nlop.eq.2) then
             !-- Print the equation to be solved
         if(Guillem(5).eqv..TRUE.) then 
             write(*,'(" (α-FDB-",A2,") - Equation to solve:",xF12.6,"x^2 +",xF12.6,"x^1 +",xF12.6,"x^0 = 0")') axis_name(gpc),real(aalpha),real(mmu),real(eenergy)
             write(*,*)
         end if
 
-            !-- Consideration of two alternative cases
-        if (order_nlop.gt.2.and.abs(bbeta).lt.real(tol)**2) then !-- 1st hyperpolarizabilty is neglegible
-            write(*,*) "--------------------------------------------------------------------------------"
-            write(*,*) "     Alternative second order solution - Neglegible 1st hyperpolarizability     "
-            write(*,*) "--------------------------------------------------------------------------------"
-        end if
-        if (abs(bbeta).lt.real(tol)**2.and.abs(aalpha).gt.abs(mmu)*1.0d5) then ! Dipole moment is neglegible
+            !-- Neglegible dipole moment coefficient
+        if (abs(mmu).lt.tol) then 
             write(*,*) "--------------------------------------------------------------------------------"
             write(*,*) "         Alternative second order solution - Neglegible dipole moment           "
             write(*,*) "--------------------------------------------------------------------------------"
-            root1=+sqrt(-eenergy/aalpha);root2=-sqrt(-eenergy/aalpha)
-            if (abs(root1)*1.0d4.gt.max_radius.or.abs(root2)*1.0d4.gt.max_radius) then ! Out of the proposed radius
-                write(*,'("The solutions are outside of the proposed radius (",xF20.2," +i",xF20.2," a.u)")') root1*1.0d4
-            else
-                write(*,'(" (α-FDB-",A2,") - First solution:  ",xF15.6," +i",xF15.6," a.u")') axis_name(gpc),root1*1.0d4
-                write(*,'(" (α-FDB-",A2,") - Second solution: ",xF15.6," +i",xF15.6," a.u")') axis_name(gpc),root2*1.0d4
+            sign_aalpha=sign(1.0d0,real(aalpha));sign_eenergy=sign(1.0d0,real(eenergy))
+
+            if(sign_aalpha.eq.sign_eenergy) then
+                write(*,'(" (α-FDB-",A2,") - The system does not have real solutions")') axis_name(gpc)
+                write(*,'(" (α-FDB-",A2,") - First pure complex solution :",xF15.6," +i",xF15.6," a.u")') axis_name(gpc),+1.0d4*sqrt(-eenergy/aalpha)
+                write(*,'(" (α-FDB-",A2,") - Second pure complex solution:",xF15.6," +i",xF15.6," a.u")') axis_name(gpc),-1.0d4*sqrt(-eenergy/aalpha)
                 write(*,*)
-                return
+
+            else
+                root1=sqrt(-eenergy/aalpha);root2=-root1
+                if (Guillem(6).eqv..TRUE.) then
+                    write(*,'(" (α-FDB-",A2,") - First pure real solution :",xF15.6," a.u")') axis_name(gpc),real(root1) 
+                    write(*,'(" (α-FDB-",A2,") - Second pure real solution:",xF15.6," a.u")') axis_name(gpc),real(root2)
+                    write(*,*)
+                end if
+            end if            
+
+            !-- Neglegible polarizability coefficient
+        else if (abs(aalpha).lt.tol) then
+            write(*,*) "--------------------------------------------------------------------------------"
+            write(*,*) "        Alternative second order solution - Neglegible polarizability           "
+            write(*,*) "--------------------------------------------------------------------------------"
+            root1=-real(eenergy)/real(mmu); root2=1E+9
+
+            !-- Second degree equation
+        else
+            discriminant=mmu**2.0d0-4.0d0*aalpha*eenergy
+            if (discriminant.ge.0.0d0) then
+                root1=(-mmu+sqrt(discriminant))/2.0d0/aalpha
+                root2=(-mmu-sqrt(discriminant))/2.0d0/aalpha
+                if(Guillem(6).eqv..TRUE.) then ! Specific solutions do not have the 1.0d4 factor
+                    write(*,'(" (α-FDB-",A2,") - Discriminant of the polynomial:",xF10.4)') axis_name(gpc),discriminant
+                    write(*,'(" (α-FDB-",A2,") - Specific solution 1:",xF18.6," +i*",xF18.6," a.u")') axis_name(gpc),real(root1)
+                    write(*,'(" (α-FDB-",A2,") - Specific solution 2:",xF18.6," +i*",xF18.6," a.u")') axis_name(gpc),real(root2)
+                    write(*,*)
+                end if
+            else
+                write(*,'(" (α-FDB-",A2,") - There does not exist a real solution for the propose system and input approximation") ') axis_name(gpc)
+                write(*,'(" (α-FDB-",A2,") - Discriminant of the polynomial:",xF18.6)') axis_name(gpc),discriminant
+                write(*,'(" (α-FDB-",A2,") - Specific solution 1:",xF15.6," +i*",xF15.6,"(*10^-4) a.u")') axis_name(gpc),1.0d4*(-mmu+sqrt(mmu**2.0d0-4.0d0*aalpha*eenergy))/2.0d0/aalpha
+                write(*,'(" (α-FDB-",A2,") - Specific solution 2:",xF15.6," +i*",xF15.6,"(*10^-4) a.u")') axis_name(gpc),1.0d4*(-mmu-sqrt(mmu**2.0d0-4.0d0*aalpha*eenergy))/2.0d0/aalpha
+                write(*,*)
             end if
         end if
 
-                !-- Regular 2nd degree equation solution --!
-        discriminant=mmu**2.0d0-4.0d0*aalpha*eenergy
-        if(Guillem(6).eqv..TRUE.) then ! Specific solutions do not have the 1.0d4 factor
-            write(*,'(" Discriminant of the polynomial:",xF10.4)') discriminant
-            write(*,'(" (α-FDB-",A2,") - Specific solution 1:",xF15.6," +i*",xF15.6," a.u")') axis_name(gpc),(-mmu+sqrt(discriminant))/2.0d0/aalpha
-            write(*,'(" (α-FDB-",A2,") - Specific solution 2:",xF15.6," +i*",xF15.6," a.u")') axis_name(gpc),(-mmu-sqrt(discriminant))/2.0d0/aalpha
-            write(*,*)
-        end if
-        if (discriminant.ge.0.0d0) then
-            root1=(-mmu+sqrt(discriminant))/2.0d0/aalpha
-            root2=(-mmu-sqrt(discriminant))/2.0d0/aalpha
-        else
-            write(*,*) "There does not exist a *REAL* solution for the proposed system"
-        end if
-
             !-- Get the closest-to-zero solution 
-        min_root=root1
-        if (abs(root2).lt.abs(min_root)) min_root=root2
+        min_root=abs(root1)
+        if (abs(root2).le.min_root) min_root=real(root2)
 
             !-- Check whether the solutions are inside the resolution sphere or not
-        if(abs(root1)*1.0d4.gt.max_radius.and.abs(root2)*1.0d4.gt.max_radius) then
-            write(*,'(" The solution is outside of the proposed radius (",xF18.6,"*10^-4 a.u)")') min_root*1.0d4
+        if(min_root.le.max_radius) then
+            write(*,'(" (α-FDB-",A2,") - The minimum field strength for the proposed system is:",xA2,"=",xF12.2,"(*10^-4) a.u")') axis_name(gpc),axis_name(gpc),min_root*1.0d4
             write(*,*)
         else 
-            write(*,*) "The proposed solutions for the system are:" 
-            write(*,'(xA2,"=",xF10.2,"(*10^-4) a.u and",xA2,"=",xF10.2,"(*10^-4) a.u")') axis_name(gpc),real(root1)*1.0d4,axis_name(gpc),real(root2)*1.0d4
-            write(*,*)
-            write(*,'(" (α-FDB-",A2,") - The minimum field strength for the proposed system is:",xA2,"=",xF12.2,"(*10^-4) a.u")') axis_name(gpc),axis_name(gpc),min_root*1.0d4
+            write(*,'(" (α-FDB-",A2,") - Maximum radius:",xF10.6)') max_radius
+            write(*,'(" (α-FDB-",A2,") - The solution is outside of the proposed radius: ",A2," = ",xF18.6,"(*10^-4) a.u)")') axis_name(gpc),axis_name(gpc),min_root*1.0d4
             write(*,*)
         end if
     
             !-- Print the checks of the solutions
         if (Guillem(7).eqv..TRUE.) then
-            write(*,'(" (α-FDB-",A2,") - First root: ",xF18.6 )') axis_name(gpc),root1
+            write(*,'(" (α-FDB-",A2,") - First root: ",xF18.6," +i",xF18.6," a.u ")') axis_name(gpc),root1
             write(*,*) abs(aalpha*root1**2+mmu*root1+eenergy)
-            write(*,'(" (α-FDB-",A2,") - Second root:",xF18.6 )') axis_name(gpc),root2
+            write(*,'(" (α-FDB-",A2,") - Second root:",xF18.6," +i",xF18.6," a.u ")') axis_name(gpc),root2
             write(*,*) abs(aalpha*root2**2+mmu*root2+eenergy)
         end if
+
     end if
-        !===== α-FDB-1D solution(s) --------------------------------------------
 
-!===============================================================================
-!###############################################################################
-!===============================================================================
+!================================ α-VOAM-1D ==========================================    
+!################################################################################################################################
+!################################################################################################################################
+!################################################################################################################################
+!################################################################################################################################
+!================================ β-VOAM-1D ==========================================    
 
-        !===== β-FDB-1D solution(s) --- General solution for 3rd degree equation 
+        ! --- General solution for 3rd degree equation ---
     if(order_nlop.eq.3) then
             !-- Print the specific parameters for the (depressed) cubic equation
         if(Guillem(4).eqv..TRUE.) then
@@ -295,145 +315,242 @@ contains
             write(*,*)
         end if
 
-            !-- Three different scenarios
-        !================== CASE 1 CASE 1 CASE 1 CASE 1 CASE 1 CASE 1 CASE ===============!
-        if(abs(omega).lt.real(tol)) then ! We have three real roots, two of them being equal // omega.eq.0.0d0
-            write(*,*) "            Case 1 - Three real solutions, two of them equal" 
-            write(*,*) "--------------------------------------------------------------------------------------------------------------------  "
-            root_1=+2.0d0*sign(abs(-0.5d0*real(q))**(1.0d0/3.0d0),-0.5d0*real(q))-aalpha/3.0d0/bbeta
-            root_2=-1.0d0*sign(abs(-0.5d0*real(q))**(1.0d0/3.0d0),-0.5d0*real(q))-aalpha/3.0d0/bbeta
-            root_3=root_2
-            root(1)=root_1;root(2)=root_2;root(3)=root_3
+            !-- Neglegible hyperpolarizability
+        if (abs(bbeta).lt.tol**2) then
+            
+                !-- Neglegible hyperpolarizability and dipole moment coefficients
+            if (abs(mmu).lt.tol**2) then 
+                write(*,*) "-------------------------------------------------------------------------------------------------------"
+                write(*,*) "         Alternative third order solution - Neglegible hyperpolarizability and dipole moment           "
+                write(*,*) "-------------------------------------------------------------------------------------------------------"
+                sign_aalpha=sign(1.0d0,real(aalpha));sign_eenergy=sign(1.0d0,real(eenergy))
 
-                !-- Print the raw specific roots
-            if(Guillem(6).eqv..TRUE.) then 
-                write(*,*) "        Specific solutions (a.u):"
-                write(*,'(" (β-FDB-",A2,") - Case 1 - First solution: ",xF18.6)') axis_name(gpc),root_1
-                write(*,'(" (β-FDB-",A2,") - Case 1 - Second solution:",xF18.6)') axis_name(gpc),root_2
-                write(*,'(" (β-FDB-",A2,") - Case 1 - Third solution: ",xF18.6)') axis_name(gpc),root_3
-                write(*,*)
-            end if
+                if(sign_aalpha.eq.sign_eenergy) then
+                    write(*,'(" (β-FDB-",A2,") - The system does not have real solutions")') axis_name(gpc)
+                    write(*,'(" (β-FDB-",A2,") - First pure complex solution :",xF15.6," +i",xF15.6," a.u")') axis_name(gpc),+1.0d4*sqrt(-eenergy/aalpha)
+                    write(*,'(" (β-FDB-",A2,") - Second pure complex solution:",xF15.6," +i",xF15.6," a.u")') axis_name(gpc),-1.0d4*sqrt(-eenergy/aalpha)
+                    write(*,*)
 
-                !-- Obtaining the closest-to-zero solution
-            min_root=real(root(1))
-            do i=2,3
-                if (abs(root(i)).lt.abs(min_root)) min_root=real(root(i))
-            end do
+                else
+                    root1=sqrt(-eenergy/aalpha);root2=-root1
+                    if (Guillem(6).eqv..TRUE.) then
+                        write(*,'(" (β-FDB-",A2,") - First pure real solution :",xF15.6," a.u")') axis_name(gpc),real(root1) 
+                        write(*,'(" (β-FDB-",A2,") - Second pure real solution:",xF15.6," a.u")') axis_name(gpc),real(root2)
+                        write(*,*)
+                    end if
+                end if            
 
-                !-- Check whether the solutions are inside the resolution sphere or not
-            if (min_root*1.0d4.gt.max_radius) then
-                write(*,*) "The minimum solution is out of the proposed radius"
-                write(*,*) "Please consider either a bigger radius or an other thermochemistry value"
-                write(*,*) 
+                !-- Neglegible hyperpolarizability and polarizability coefficients
+            else if (abs(aalpha).lt.tol**2) then
+                write(*,*) "------------------------------------------------------------------------------------------------------"
+                write(*,*) "        Alternative thid order solution - Neglegible hyperpolarizability and polarizability           "
+                write(*,*) "------------------------------------------------------------------------------------------------------"
+                root1=-real(eenergy)/real(mmu); root2=1E+9
+
+                !-- Only neglegible hyperpolarizability
             else
-                write(*,'(" (β-FDB-",A2,") - Case 1 - The minimum field strength is:",xF12.2,"(*10^-4 a.u)")') axis_name(gpc),min_root*1.0d4
-                write(*,*)
+                write(*,*) "------------------------------------------------------------------------------------------------------"
+                write(*,*) "                Alternative thid order solution - Neglegible hyperpolarizability                      "
+                write(*,*) "------------------------------------------------------------------------------------------------------"
+                discriminant=mmu**2.0d0-4.0d0*aalpha*eenergy
+
+                if (discriminant.ge.0.0d0) then
+                    root1=(-mmu+sqrt(discriminant))/2.0d0/aalpha
+                    root2=(-mmu-sqrt(discriminant))/2.0d0/aalpha
+                    if(Guillem(6).eqv..TRUE.) then ! Specific solutions do not have the 1.0d4 factor
+                        write(*,'(" (β-FDB-",A2,") - Discriminant of the polynomial:",xF10.4)') axis_name(gpc),discriminant
+                        write(*,'(" (β-FDB-",A2,") - Specific solution 1:",xF18.6," +i*",xF18.6," a.u")') axis_name(gpc),real(root1)
+                        write(*,'(" (β-FDB-",A2,") - Specific solution 2:",xF18.6," +i*",xF18.6," a.u")') axis_name(gpc),real(root2)
+                        write(*,*)
+                    end if
+                else
+                    write(*,'(" (β-FDB-",A2,") - There does not exist a real solution for the propose system and input approximation") ') axis_name(gpc)
+                    write(*,'(" (β-FDB-",A2,") - Discriminant of the polynomial:",xF18.6)') axis_name(gpc),discriminant
+                    write(*,'(" (β-FDB-",A2,") - Specific solution 1:",xF15.6," +i*",xF15.6,"(*10^-4) a.u")') axis_name(gpc),1.0d4*(-mmu+sqrt(mmu**2.0d0-4.0d0*aalpha*eenergy))/2.0d0/aalpha
+                    write(*,'(" (β-FDB-",A2,") - Specific solution 2:",xF15.6," +i*",xF15.6,"(*10^-4) a.u")') axis_name(gpc),1.0d4*(-mmu-sqrt(mmu**2.0d0-4.0d0*aalpha*eenergy))/2.0d0/aalpha
+                    write(*,*)
+                end if
             end if
 
-            if (Guillem(7).eqv..TRUE.) then    
-                do i=1,3
-                    write(*,'(" Root",xI1,":",xF18.6," +i",xF18.6)') i,root(i)
-                    write(*,'("      Check:",xF10.8)') abs(bbeta*real(root(i))**3.0d0+aalpha*real(root(i))**2.0d0+mmu*real(root(i))+eenergy)
-                end do
-            end if
-            write(*,*) "--------------------------------------------------------------------------------------------------------------------  "
-            return
-
-            !================== CASE 2 CASE 2 CASE 2 CASE 2 CASE 2 CASE 2 CASE ===============!
-        else if (omega.gt.real(tol)) then ! We have one real root and two complex conjugated roots. 
-            write(*,*) "            Case 2 - One real root and two complex conjugated ones"
-            write(*,*) "--------------------------------------------------------------------------------------------------------------------  "
-            do i=1,3
-                n=i-1 
-                    !-- Generating the first([u_0]) and ([v_0])second partial solution ([u_0])
-                half_root1=sign(abs(-0.5d0*q-sqrt(0.25d0*q**2+p**3/27.0d0))**(1.0d0/3.0d0),real(-0.5d0*q-sqrt(0.25d0*q**2+p**3/27.0d0)))
-                half_root2=sign(abs(-0.5d0*q+sqrt(0.25d0*q**2+p**3/27.0d0))**(1.0d0/3.0d0),real(-0.5d0*q+sqrt(0.25d0*q**2+p**3/27.0d0)))
-
-                    !-- Applying the unitary complex root for the answers and undoing the variable change to recover the original answer
-                root(i)=half_root1*(eps**n)+half_root2*(eps**(2*n))-aalpha/3.0d0/bbeta
-            end do
+                !-- Get the closest-to-zero solution 
+            min_root=abs(root1)
+            if (abs(root2).le.min_root) min_root=real(root2)
 
                 !-- Check whether the solutions are inside the resolution sphere or not
-            if (abs(root(1)).gt.max_radius) then ! The solution is out of the scan
-                write(*,*) " The real root is out of the predefined scanning radius"
+            if(min_root.le.max_radius) then
+                write(*,'(" (β-FDB-",A2,") - The minimum field strength for the proposed system is:",xA2,"=",xF12.2,"(*10^-4) a.u")') axis_name(gpc),axis_name(gpc),min_root*1.0d4
                 write(*,*)
             else 
-                write(*,'(" (β-FDB-",A2,") - Case 2 - The minimum field strength is:",xF12.2,"(*10^-4 a.u)")') axis_name(gpc),real(root(1))*1.0d4
+                write(*,'(" (β-FDB-",A2,") - Maximum radius:",xF10.6)') max_radius
+                write(*,'(" (β-FDB-",A2,") - The solution is outside of the proposed radius: ",A2," = ",xF18.6,"(*10^-4) a.u)")') axis_name(gpc),axis_name(gpc),min_root*1.0d4
                 write(*,*)
             end if
-                
-                !-- Print the raw specific roots
-            if (Guillem(6).eqv..TRUE.) then
-                write(*,'(" (β-FDB-",A2,") - Case 2 - Unique specific real solution:   ",xF18.6," a.u")') axis_name(gpc),root(1)
-                write(*,'(" (β-FDB-",A2,") - Case 2 - First specific complex solution: ",xF18.6," +i",xF18.6" a.u")') axis_name(gpc),root(2)
-                write(*,'(" (β-FDB-",A2,") - Case 2 - Second specific complex solution:",xF18.6," +i",xF18.6" a.u")') axis_name(gpc),root(3)
-                write(*,*)
-            end if
-        
-                !-- Print the checks of the solutions
+
             if (Guillem(7).eqv..TRUE.) then
-                do i=1,3
-                    write(*,'(" Root",xI1,":",xF18.6," +i",xF18.6)') i,root(i)
-                    write(*,'("      Check:",xF10.8)') abs(bbeta*real(root(i))**3.0d0+aalpha*real(root(i))**2.0d0+mmu*real(root(i))+eenergy)
+                write(*,'(" (β-FDB-",A2,") - First root: ",xF18.6," +i",xF18.6," a.u ")') axis_name(gpc),root1
+                write(*,*) abs(aalpha*root1**2+mmu*root1+eenergy)
+                write(*,'(" (β-FDB-",A2,") - Second root:",xF18.6," +i",xF18.6," a.u ")') axis_name(gpc),root2
+                write(*,*) abs(aalpha*root2**2+mmu*root2+eenergy)
+            end if
+
+            !-- Hyperpolarizability coefficient is not neglegible
+        else
+
+                !-- Three different scenarios
+            !================== CASE 1 CASE 1 CASE 1 CASE 1 CASE 1 CASE 1 CASE ===============!
+            if(abs(omega).lt.tol) then ! We have three real roots, two of them being equal // omega.eq.0.0d0
+                write(*,*) "            Case 1 - Three real solutions, two of them equal" 
+                write(*,*) "--------------------------------------------------------------------------------------------------------------------  "
+                root_1=+2.0d0*sign(abs(-0.5d0*real(q))**(1.0d0/3.0d0),-0.5d0*real(q))-aalpha/3.0d0/bbeta
+                root_2=-1.0d0*sign(abs(-0.5d0*real(q))**(1.0d0/3.0d0),-0.5d0*real(q))-aalpha/3.0d0/bbeta
+                root_3=root_2
+                root(1)=root_1;root(2)=root_2;root(3)=root_3
+
+                    !-- Print the raw specific roots
+                if(Guillem(6).eqv..TRUE.) then 
+                    write(*,*) "        Specific solutions (a.u):"
+                    write(*,'(" (β-FDB-",A2,") - Case 1 - First solution: ",xF18.6)') axis_name(gpc),root_1
+                    write(*,'(" (β-FDB-",A2,") - Case 1 - Second solution:",xF18.6)') axis_name(gpc),root_2
+                    write(*,'(" (β-FDB-",A2,") - Case 1 - Third solution: ",xF18.6)') axis_name(gpc),root_3
+                    write(*,*)
+                end if
+
+                    !-- Obtaining the closest-to-zero solution
+                min_root=real(root(1))
+                do i=2,3
+                    if (abs(root(i)).lt.abs(min_root)) min_root=real(root(i))
                 end do
-            end if 
-            write(*,*) "--------------------------------------------------------------------------------------------------------------------  "
-            return
 
-            !================== CASE 3 CASE 3 CASE 3 CASE 3 CASE 3 CASE 3 CASE ===============!
-        else if (omega.lt.0.0d0) then ! We have three real solutions
-            write(*,*) "            Case 3 - Three real different solutions"
-            write(*,*) "--------------------------------------------------------------------------------------------------------------------  "
-                !-- Computation of the three real solutions --!
-            angle=dacos(-0.5d0*real(q)/sqrt(-1.0d0*real(p)**3/27.0d0))
+                    !-- Check whether the solutions are inside the resolution sphere or not
+                if (abs(min_root).le.max_radius) then
+                    write(*,'(" (β-FDB-",A2,") - Case 1 - The minimum field strength is:",xF12.2,"(*10^-4 a.u)")') axis_name(gpc),min_root*1.0d4
+                    write(*,*)
+                else
+                    write(*,'(" (β-FDB-",A2,") - Maximum radius:",xF10.6)') axis_name(gpc),max_radius
+                    write(*,'(" (β-FDB-",A2,") - The solution is outside of the proposed radius: ",A2," = ",xF18.6,"(*10^-4) a.u)")') axis_name(gpc),axis_name(gpc),min_root*1.0d4
+                    write(*,'(" (β-FDB-",A2,") - Please conside an other stoichiometry")') axis_name(gpc)
+                    write(*,*) 
+                end if
 
-                        !-- Formulae for each root --!
-            root_1=2*sqrt(-pp/3.0d0)*dcos(angle/3.0d0)-aalpha/3.0d0/bbeta
-            root_2=2*sqrt(-pp/3.0d0)*dcos((angle+2*PI)/3.0d0)-aalpha/3.0d0/bbeta
-            root_3=2*sqrt(-pp/3.0d0)*dcos((angle+4*PI)/3.0d0)-aalpha/3.0d0/bbeta
-            root(1)=root_1;root(2)=root_2;root(3)=root_3
+                if (Guillem(7).eqv..TRUE.) then    
+                    do i=1,3
+                        write(*,'(" (β-FDB-",A2,") - Root",xI1,":",xF18.6," +i",xF18.6)') axis_name(gpc),i,root(i)
+                        write(*,'("      Check:",xF10.8)') abs(bbeta*real(root(i))**3.0d0+aalpha*real(root(i))**2.0d0+mmu*real(root(i))+eenergy)
+                    end do
+                end if
+                write(*,*) "--------------------------------------------------------------------------------------------------------------------  "
+                return
 
-            if(Guillem(6).eqv..TRUE.) then !-- Print raw roots
-                write(*,'(" The solutions given by VOAM_1D are:")')
-                write(*,'(" (β-FDB-",A2,") - Case 3 - First specific solutions (a.u):  ",xF15.6)') axis_name(gpc),root_1
-                write(*,'(" (β-FDB-",A2,") - Case 3 - Second specific solutions (a.u): ",xF15.6)') axis_name(gpc),root_2
-                write(*,'(" (β-FDB-",A2,") - Case 3 - Third specific solutions (a.u):  ",xF15.6)') axis_name(gpc),root_3
-                write(*,*)
-            end if
-    
-                !-- Finding the closest-to-zero root --!
-            min_root=real(root(1))
-            do i=2,3
-                if (abs(root(i)).lt.abs(min_root)) min_root=real(root(i))
-            end do
-
-                !-- Print of the minimum solution --!
-            if (min_root*1.0d4.gt.max_radius) then
-                write(*,'(" The minimum solution is out of the proposed radius (",F10.2," *10^-4 a.u)")') min_root*1.0d4 
-            else
-                write(*,'(" (β-FDB-",A2,") - Case 3 - The minimum field strength is:",xF20.6,"(*10^-4) a.u")') axis_name(gpc),min_root*1.0d4
-            end if
-
-                !-- Print the checks of the solutions
-            if (Guillem(7).eqv..TRUE.) then 
+                !================== CASE 2 CASE 2 CASE 2 CASE 2 CASE 2 CASE 2 CASE ===============!
+            else if (omega.gt.tol) then ! We have one real root and two complex conjugated roots. 
+                write(*,*) "            Case 2 - One real root and two complex conjugated ones"
+                write(*,*) "--------------------------------------------------------------------------------------------------------------------  "
                 do i=1,3
-                   write(*,'(" Root",xI1,":",xF18.6," +i",xF18.6)') i,root(i)
-                   write(*,'("      Check:",xF10.8)') abs(bbeta*real(root(i))**3.0d0+aalpha*real(root(i))**2.0d0+mmu*real(root(i))+eenergy)
+                    n=i-1 
+                        !-- Generating the first([u_0]) and ([v_0])second partial solution ([u_0])
+                    half_root1=sign(abs(-0.5d0*q-sqrt(0.25d0*q**2+p**3/27.0d0))**(1.0d0/3.0d0),real(-0.5d0*q-sqrt(0.25d0*q**2+p**3/27.0d0)))
+                    half_root2=sign(abs(-0.5d0*q+sqrt(0.25d0*q**2+p**3/27.0d0))**(1.0d0/3.0d0),real(-0.5d0*q+sqrt(0.25d0*q**2+p**3/27.0d0)))
+
+                        !-- Applying the unitary complex root for the answers and undoing the variable change to recover the original answer
+                    root(i)=half_root1*(eps**n)+half_root2*(eps**(2*n))-aalpha/3.0d0/bbeta
                 end do
+
+                    !-- Check whether the solutions are inside the resolution sphere or not
+                min_root=real(root(1))
+                if (abs(min_root).le.max_radius) then ! The solution is out of the scan
+                    write(*,'(" (β-FDB-",A2,") - Case 2 - The minimum field strength is:",xA2," = ",xF12.2,"(*10^-4) a.u")') axis_name(gpc),axis_name(gpc),real(root(1))*1.0d4
+                    write(*,*)
+                else 
+                    write(*,'(" (β-FDB-",A2,") - Maximum radius:",xF10.6)') axis_name(gpc),max_radius
+                    write(*,'(" (β-FDB-",A2,") - The solution is outside of the proposed radius: ",A2," = ",xF18.6,"(*10^-4) a.u)")') axis_name(gpc),axis_name(gpc),min_root*1.0d4
+                    write(*,'(" (β-FDB-",A2,") - Please conside an other stoichiometry")') axis_name(gpc)
+                    write(*,*)
+                end if
+                    
+                    !-- Print the raw specific roots
+                if (Guillem(6).eqv..TRUE.) then
+                    write(*,'(" (β-FDB-",A2,") - Case 2 - Unique specific real solution:   ",xF18.6," a.u")') axis_name(gpc),root(1)
+                    write(*,'(" (β-FDB-",A2,") - Case 2 - First specific complex solution: ",xF18.6," +i",xF18.6" a.u")') axis_name(gpc),root(2)
+                    write(*,'(" (β-FDB-",A2,") - Case 2 - Second specific complex solution:",xF18.6," +i",xF18.6" a.u")') axis_name(gpc),root(3)
+                    write(*,*)
+                end if
+            
+                    !-- Print the checks of the solutions
+                if (Guillem(7).eqv..TRUE.) then
+                    do i=1,3
+                        write(*,'(" Root",xI1,":",xF18.6," +i",xF18.6)') i,root(i)
+                        write(*,'("      Check:",xF10.8)') abs(bbeta*real(root(i))**3.0d0+aalpha*real(root(i))**2.0d0+mmu*real(root(i))+eenergy)
+                    end do
+                end if 
+                write(*,*) "--------------------------------------------------------------------------------------------------------------------  "
+                return
+
+                !================== CASE 3 CASE 3 CASE 3 CASE 3 CASE 3 CASE 3 CASE ===============!
+            else if (omega.lt.0.0d0) then ! We have three real solutions
+                write(*,*) "            Case 3 - Three real different solutions"
+                write(*,*) "--------------------------------------------------------------------------------------------------------------------  "
+                    !-- Computation of the three real solutions --!
+                angle=dacos(-0.5d0*real(q)/sqrt(-1.0d0*real(p)**3/27.0d0))
+
+                            !-- Formulae for each root --!
+                root_1=2*sqrt(-real(p)/3.0d0)*dcos(angle/3.0d0)-aalpha/3.0d0/bbeta
+                root_2=2*sqrt(-real(p)/3.0d0)*dcos((angle+2*PI)/3.0d0)-aalpha/3.0d0/bbeta
+                root_3=2*sqrt(-real(p)/3.0d0)*dcos((angle+4*PI)/3.0d0)-aalpha/3.0d0/bbeta
+                root(1)=root_1;root(2)=root_2;root(3)=root_3
+
+                if(Guillem(6).eqv..TRUE.) then !-- Print raw roots
+                    write(*,'(" The solutions given by VOAM_1D are:")')
+                    write(*,'(" (β-FDB-",A2,") - Case 3 - First specific solutions (a.u):  ",xF15.6)') axis_name(gpc),root_1
+                    write(*,'(" (β-FDB-",A2,") - Case 3 - Second specific solutions (a.u): ",xF15.6)') axis_name(gpc),root_2
+                    write(*,'(" (β-FDB-",A2,") - Case 3 - Third specific solutions (a.u):  ",xF15.6)') axis_name(gpc),root_3
+                    write(*,*)
+                end if
+
+                    !-- Finding the closest-to-zero root --!
+                min_root=real(root(1))
+                do i=2,3
+                    if (abs(root(i)).lt.abs(min_root)) min_root=real(root(i))
+                end do
+
+                    !-- Print of the minimum solution --!
+                if (abs(min_root).le.max_radius) then
+                    write(*,'(" (β-FDB-",A2,") - Case 2 - The minimum field strength is:",xA2," = ",xF12.2,"(*10^-4) a.u")') axis_name(gpc),axis_name(gpc),min_root*1.0d4
+                    write(*,*)
+                else
+                    write(*,'(" (β-FDB-",A2,") - Maximum radius:",xF10.6)') axis_name(gpc),max_radius
+                    write(*,'(" (β-FDB-",A2,") - The solution is outside of the proposed radius: ",A2," = ",xF18.6,"(*10^-4) a.u)")') axis_name(gpc),axis_name(gpc),min_root*1.0d4
+                    write(*,'(" (β-FDB-",A2,") - Please conside an other stoichiometry")') axis_name(gpc)
+                    write(*,*)
+                end if
+
+                    !-- Print the checks of the solutions
+                if (Guillem(7).eqv..TRUE.) then 
+                    do i=1,3
+                       write(*,'(" Root",xI1,":",xF18.6," +i",xF18.6)') i,root(i)
+                       write(*,'("      Check:",xF10.8)') abs(bbeta*real(root(i))**3.0d0+aalpha*real(root(i))**2.0d0+mmu*real(root(i))+eenergy)
+                    end do
+                end if
+                write(*,*) "--------------------------------------------------------------------------------------------------------------------  "
+                return
+
             end if
-            write(*,*) "--------------------------------------------------------------------------------------------------------------------  "
-            return
         end if
     end if
 
-!===============================================================================
-!###############################################################################
-!===============================================================================
+!================================ β-VOAM-1D ==========================================    
+!#####################################################################################
+!#####################################################################################
+!#####################################################################################
+!#####################################################################################
+!================================ γ-VOAM-1D ==========================================    
 
     if (order_nlop.eq.4) then
         write(*,*) " Gamma approach is not implemented yet!"
         write(*,*) " Please consider lower approximations."
     end if
+
+!================================ γ-VOAM-1D ==========================================    
+
     End subroutine VOAM_1D
 
 !###################################################################################################
@@ -442,34 +559,36 @@ contains
     !=========================================================================!
 !###################################################################################################
 
-    Subroutine VOAM_2D(Guillem,gpc,radius,axis,axis_name,order_nlop,grid) 
+    Subroutine VOAM_2D(Guillem,order_nlop,gpc,radius,axis,initial_position,axis_name,grid) 
     implicit none
     logical, dimension(10) :: Guillem
     integer, dimension(3) :: axis
     character*2, dimension(3) :: axis_name
-    double precision, dimension (3) :: F
-    double complex, dimension (grid,2) :: tmp_root ! Stores only the modulus
-    double precision, dimension (grid,3) :: root ! Modulus, theta and phi
-    double precision :: radius
+    double precision, dimension (3) :: F,initial_position
+    double precision :: radius,x0,y0,z0
+    integer grid
         !-- Only for FDB_μ
-    double precision :: E_FF,numerator,denominator 
+    double precision :: E_FF,numerator,denominator,constant 
         !-- For FDB_α/β 
+    double precision, allocatable, dimension (:,:) :: sort ! Sorting matrix for the Bubble Sort algorithm
+    double precision, dimension (2) :: tmp_sort ! Temporal matrix for the sorting
+    double precision, dimension (3) :: tmp_root ! Stores only the modulus
+    double precision, dimension (grid,2) :: root ! Modulus and phi
     double complex :: eenergy,mmu,aalpha,bbeta
     double complex :: p,q
-    double precision :: omega
-    integer :: sign_bbeta,sign_aalpha,sign_mmu,sign_eenergy
-    double precision :: tmp_E,tmp_mu,tmp_alpha,tmp_beta
-    double precision :: theta,phi,angle_step
-    double precision :: discriminant,angle
+    double precision :: min_root,tmp_energy,tmp_mu,tmp_alpha,tmp_beta
+    double precision :: theta,phi,angle,discriminant,omega
+    integer :: sign_aalpha,sign_eenergy
         !-- Integers for iteration
     integer gpc,step,order_nlop,upper,lower
-    integer grid,n,i,j
+    integer i,j,n,dimsort
 
 !================================ μ-VOAM-2D ==========================================    
     
     if (order_nlop.eq.1) then
         upper=nint(0.5d0*axis(1)+1.5d0*axis(2)+0.5d0*axis(3))
         lower=nint(0.5d0*axis(1)+0.5d0*axis(2)+2.5d0*axis(3))
+        !-- Falta trobar com F(GPC) es relaciona amb initial_position()
             !-- axis_scan=XY --> (upper,lower)==(2,1);  axis_scan=XZ --> (upper,lower)==(1,3);  axis_scan=YZ --> (upper,lower)==(2,3)
         mu(upper)=mu(upper)+mu_lig(3);mu(lower)=mu(lower)+mu_lig(3)
         E_FF=E_0-abs(redox_coef)*redox_potential-(target_barrier/6.2751d2)-mu(gpc)*F(gpc)
@@ -479,6 +598,7 @@ contains
         end if
         numerator=mu(upper)*E_FF;denominator=mu(upper)**2+mu(lower)**2
         F(upper)=numerator/denominator; F(lower)=(mu(lower)/mu(upper))*F(upper)
+        !if (radius**2-F(gpc)**2
         write(*,'(x"The minimum field strength is (",A2,",",A2,";",A2,")=(",F7.2,","F7.2,","F7.2,")(*10^-4) a.u)")') & 
         & axis_name(upper),axis_name(lower),axis_name(gpc),F(upper)*1.0d4,F(lower)*1.0d4,F(gpc)*1.0d4
     end if
@@ -490,179 +610,189 @@ contains
 !################################################################################################################################
 !================================= α-VOAM-2D ==========================================    
 
-    n=0
     if (order_nlop.eq.2) then
-            ! XY=(1,1,0) gpc=3 // XZ=(1,0,1) gpc=2 // YZ=(0,1,1) gpc=1
+
+            ! XY=(1,1,0) gpc=3,axis(gpc)=0 --> Step=1 // XZ=(1,0,1) gpc=2,axis(gpc)=0 --> Step=2 // YZ=(0,1,1) gpc=1,axis(gpc)=0 --> Step=1
         step=nint(1+abs(cos(0.5d0*PI*gpc)))
-        tmp_E=E_0-abs(redox_coef)*redox_potential-target_barrier/6.2751d2     !-- Energy associated to thermochemistry
-        tmp_mu=0.0d0;tmp_alpha=0.0d0
-           !##############################################################
-               !-- Scanning the XZ or YZ plane
-           !##############################################################
-        if (axis(1).eq.0.or.axis(2).eq.0) then
-            do i=1,grid
-                    ! Theta: 0.le.θ.le.π
-                theta=((i-1)/(1.0d0*grid-1))*PI
-                if(axis(1).eq.1) then
-                    phi=0.0d0*PI;root(i,3)=phi !-- Scanning the XZ plane
-                else if (axis(2).eq.1) then
-                    phi=0.5d0*PI;root(i,3)=phi !-- Scanning the YZ plane
-                end if
 
-                    ! Field vector computation
-                F(1)=dsin(theta)*dcos(phi);F(2)=dsin(theta)*dsin(phi);F(3)=dcos(theta)
-                tmp_E=tmp_E-mu(gpc)*radius*F(gpc)-0.5d0*(radius**2)*alpha(gpc,gpc)*F(gpc)**2 !-- Energy associated to constant fields
+            !-- Initialization of the tmp_NLOP values
+        tmp_energy=E_0-abs(redox_coef)*redox_potential-target_barrier/6.2751d2     !-- Energy associated to thermochemistry
 
-                    ! Initialization of angular alpha calculation
-                tmp_alpha=tmp_alpha+2.0d0*alpha(2-axis(1),2+axis(3))*F(2-axis(1))*F(2+axis(3))
-                do j=(2-axis(1)),(2+axis(3)),step
-                    tmp_mu=tmp_mu+F(j)*(mu(j)+alpha(j,gpc)*radius*F(gpc))
-                    tmp_alpha=tmp_alpha+alpha(j,j)*F(j)**2
-                end do
-                eenergy=cmplx(tmp_E,0.0d0); mmu=-cmplx(tmp_mu,0.0d0)
-                aalpha=-0.5d0*cmplx(tmp_alpha,0.0d0)
-                if (Guillem(4).eqv..TRUE.) then
-                    write(*,'(" Angles: Theta=",xF6.4," and Phi=",xF6.4)') theta,phi
-                    write(*,'(" Energy coefficient:        ",xF18.6)') real(eenergy)
-                    write(*,'(" Dipole moment coefficient: ",xF18.6)') real(mmu)
-                    write(*,'(" Polarizability coefficient:",xF18.6)') real(aalpha)
-                    write(*,*)
-                end if
+        do i=1,grid
+            tmp_mu=0.0d0; tmp_alpha=0.0d0; tmp_root=0.0d0
 
-                if (abs(mmu).lt.tol) then ! Angular-mmu is neglegible --> ax**2+b=0
-                    sign_aalpha=sign(1.0d0,real(aalpha));sign_eenergy=sign(1.0d0,real(eenergy))
-                    if(sign_aalpha.eq.sign_eenergy) then ! The solution is proved to be complex. Skipped
-                        if(Guillem(6).eqv..TRUE.) then ! Print the specific solutions
-                            !-- Coded in this way so it is not stored in memory and is computed on-the-fly
-                            write(*,'(" (α-FDB-",A2,A2," - Positive complex root:",xF12.6," +i",xF12.6," a.u")') axis_name(2-axis(1)),axis_name(2+axis(3)),+1.0d0*sqrt(-eenergy/aalpha)
-                            write(*,'(" (α-FDB-",A2,A2," - Negative complex root:",xF12.6," +i",xF12.6," a.u")') axis_name(2-axis(1)),axis_name(2+axis(3)),-1.0d0*sqrt(-eenergy/aalpha)
-                        end if
-                        continue
-                    else !-- Double signed root --> ax**2 -b=0
-                            !-- It is defined a complex matrix to store both solutions. If they are they share the absolute value, we are going to apply a factor of
-                            !   1/sqrt(2). If one of the solutions is deemed to be zero, we will conserve the module as is considered to be the lowest one
-                        tmp_root(i,1)=+1.0d0*sqrt(-real(eenergy)/real(aalpha));tmp_root(i,2)=-1.0d0*sqrt(-real(eenergy)/real(aalpha))
-                        root(i,3)=theta
-                        if (Guillem(6).eqv..TRUE.) then !-- Print the specific solutions
-                            write(*,'(" (α-FDB-",A2,A2,") - Neglegible dipole moment positive root:",xF18.6," a.u")') axis_name(2-axis(1)),axis_name(2+axis(3)),real(tmp_root(i,1))
-                            write(*,'(" (α-FDB-",A2,A2,") - Neglegible dipole moment negative root:",xF18.6," a.u")') axis_name(2-axis(1)),axis_name(2+axis(3)),real(tmp_root(i,2))
-                            write(*,*)
-                        end if
-                    end if
-                else if (abs(aalpha).lt.tol) then ! Angular-aalpha is neglegible --> ax**1 +b=0
-                    tmp_root(i,1)=-real(eenergy)/real(mmu);tmp_root(i,2)=0.0d0
-                    root(i,3)=theta
-                    if (Guillem(6).eqv..TRUE.) then !-- Print the specific solutions
-                        write(*,'(" (α-FDB-",A2,A2,") - Neglegible alpha root:",xF12.6," a.u")') real(tmp_root(i,1))
-                    end if
-                else !-- Complete second degree solution
-                    discriminant=mmu**2-4.0d0*aalpha*eenergy
-                    if (discriminant.ge.0.0d0) then
-                        root(i,3)=theta
-                        tmp_root(i,1)=-mmu+sqrt(discriminant)/2.0d0/aalpha
-                        tmp_root(i,2)=-mmu-sqrt(discriminant)/2.0d0/aalpha
-                        if (Guillem(6).eqv..TRUE.) then !-- Print the specific solutions
-                            write(*,'(" (α-FDB-",A2,A2,") - Positive pure second degree root:",xF12.6," a.u")') axis_name(2-axis(1)),axis_name(2+axis(3)),real(tmp_root(i,1))
-                            write(*,'(" (α-FDB-",A2,A2,") - Negative pure second degree root:",xF12.6," a.u")') axis_name(2-axis(1)),axis_name(2+axis(3)),real(tmp_root(i,2))
-                            write(*,*)
-                        end if
-                    end if
-                end if
-                if (abs(tmp_root(i,1)).eq.abs(tmp_root(i,2))) then ! The root is double signed
-                    root(i,1)=abs(tmp_root(i,1)) !-- Absolute value because there is no need of negative modulus
-                                                 !   the direction of the electric field can be tuned with the theta and phi
-                end if
-                    !-- Re-declare tmp_mu and tmp_alpha to restart the scan    
-                tmp_mu=0.0d0;tmp_alpha=0.0d0
-            end do
-            !##################################################################
-                !-- Scanning the XY plane
-            !##################################################################
-        else if (axis(3).eq.0) then
-            do i=1,2*grid
-                    !-- Phi: 0.le.φ.le.2π
-                phi=((i-1)/(2.0d0*grid-1))*2.0d0*PI;theta=0.5d0*PI;root(i,2)=theta
+                !-- 0.le.φ.le.2π 
+            phi=((i-1)/(1.0d0*grid-1))*2.0d0*PI
 
-                    !-- Declare F as a variable vector
-                F(1)=dsin(theta)*dcos(phi);F(2)=dsin(theta)*dsin(phi);F(3)=dcos(theta)
-                tmp_E=tmp_E-mu(gpc)*radius*F(gpc)-0.5d0*(radius**2)*alpha(gpc,gpc)*F(gpc)**2 !-- Energy associated to constant fields
+                !-- Declaration of the field vector in cylindrical coordinates
+            F(gpc)=initial_position(gpc);F(2-axis(1))=dcos(phi);F(2+axis(3))=dsin(phi)
+                    !-- XY plane: F(1)=cos(phi); F(2)=sin(phi); F(3)=Fz
+                    !-- XZ plane: F(1)=cos(phi); F(3)=sin(phi); F(2)=Fy
+                    !-- YZ plane: F(2)=cos(phi); F(3)=sin(phi); F(1)=Fx
+            
+                !-- The maximum radius of scan is going to decrease with the increase of the constant field. The general expression if its decrement is the following
+            max_radius=dsqrt(radius**2-F(gpc)**2)
 
-                    !-- Initialization of angular alpha's calculation
-                tmp_alpha=tmp_alpha+2.0d0*alpha(2-axis(1),2+axis(3))*F(2-axis(1))*F(2+axis(3))
-                do j=(2-axis(1)),(2+axis(3)),step
-                    tmp_mu=tmp_mu+F(j)*(mu(j)+alpha(j,gpc)*radius*F(gpc)) 
-                    tmp_alpha=tmp_alpha+alpha(j,j)*F(j)**2
-                end do
+                !-- Initialization of the calculation of the (constant-field dependent) energy and angular alpha
+            tmp_energy=tmp_energy-mu(gpc)*F(gpc)-0.5d0*alpha(gpc,gpc)*F(gpc)**2
+            tmp_alpha=tmp_alpha+2.0d0*alpha(2-axis(1),2+axis(3))*dsin(2.0d0*phi)
                 
-                    !-- Declaration of the parameters for the second degree solution
-                eenergy=cmplx(tmp_E,0.0d0); mmu=-cmplx(tmp_mu,0.0d0)
-                aalpha=-0.5d0*cmplx(tmp_alpha,0.0d0)
+                !-- Computation of the angular NLOP and declaration of the parameters of the second degree equation
+            do j=(2-axis(1)),(2+axis(3)),step
+                    !-- Angular dipole moment
+                tmp_mu=tmp_mu+F(j)*(mu(j)+alpha(j,gpc)*F(gpc))
 
-                    !-- Print the coefficients
-                if (Guillem(4).eqv..TRUE.) then
-                    write(*,'(" Angles: Theta=",xF6.4,"& Phi=",xF6.4)') theta,phi
-                    write(*,'(" Energy coefficient:          ",xF18.6)') real(eenergy)
-                    write(*,'(" Dipole moment coefficient:   ",xF18.6)') real(mmu)
-                    write(*,'(" Polarizability coefficient:  ",xF18.6)') real(aalpha)
-                    write(*,*)
-                end if
+                    !-- Angular polarizability matrix
+                tmp_alpha=tmp_alpha+alpha(j,j)*F(j)**2
 
-                !###############################################################
-                    !-- Computation of the solutions
-                !###############################################################
-                if (abs(mmu).lt.tol) then 
-                        !-- Angular-mmu is neglegible --> ax**2+-b=0
-                    sign_aalpha=sign(1.0d0,real(aalpha));sign_eenergy=sign(1.0d0,real(eenergy))
-                    if(sign_aalpha.eq.sign_eenergy) then 
-                            !-- The solution belongs to the complex numbers. Skip solution
-                        if(Guillem(6).eqv..TRUE.) then !-- Print the specific solutions
-                            write(*,'(" (α-FDB-FxFy) - Complex positive root:",xF12.6," +i",xF12.6," a.u")') +1.0d0*sqrt(-eenergy/aalpha)
-                            write(*,'(" (α-FDB-FxFy) - Complex negative root:",xF12.6," +i",xF12.6," a.u")') -1.0d0*sqrt(-eenergy/aalpha)
-                            write(*,*)
-                        end if
-                        continue
-                    else 
-                        !-- Double signed root --> ax**2 -b=0
-                                !-- We define a complex number for each of the signs and whether the number has a value different or
-                                !   equal to zero, it is going to be applied a factor of sqrt(2) so we can still conserve the modulus
-                                !   of the solution
-                        tmp_root(i,1)=sqrt(-real(eenergy)/real(aalpha));tmp_root(i,2)=-sqrt(-real(eenergy)/real(aalpha))
-                        root(i,3)=phi
-                        if (Guillem(6).eqv..TRUE.) then !-- Print the specific solutions
-                            write(*,'(" (α-FDB-FxFy) - Neglegible dipole moment positive root:",xF18.6)') tmp_root(i,1)
-                            write(*,'(" (α-FDB-FxFy) - Neglegible dipole moment negative root:",xF18.6)') tmp_root(i,1)
-                            write(*,*)
-                        end if
+            end do
+            eenergy=cmplx(tmp_energy,0.0d0); mmu=-cmplx(tmp_mu,0.0d0); aalpha=-0.5d0*cmplx(tmp_alpha,0.0d0)
+            if (Guillem(4).eqv..TRUE.) then
+                write(*,'(" Initial point:(",F6.2,",",F6.2,",",F6.2,")" )') initial_position(1),initial_position(2),initial_position(3)
+                write(*,'(" Phi=                           ",xF6.4)') phi
+                write(*,'(" Energy coefficient:        ",xF18.12)') real(eenergy)
+                write(*,'(" Dipole moment coefficient: ",xF18.12)') real(mmu)
+                write(*,'(" Polarizability coefficient:",xF18.12)') real(aalpha)
+                write(*,*)
+            end if 
+
+            !##################################################################!
+            !           Computing the second degree solutions                  !
+            !##################################################################!
+
+            if (abs(mmu).lt.tol) then ! angular-mmu is neglegible
+                sign_aalpha=sign(1.0d0,real(aalpha));sign_eenergy=sign(1.0d0,real(eenergy))
+
+                if(sign_aalpha.eq.sign_eenergy) then 
+                        ! The sign is the same ---> ax**2+b=0 ---> The solution is proven to be complex. Skipped
+                    if(Guillem(6).eqv..TRUE.) then ! Print the specific solutions
+                            !-- Coded in this way so it is not stored in memory and is computed on-the-fly
+                        write(*,'(" (α-FDB-",A2,A2,") - Positive complex root:",xF12.6," +i",xF12.6," a.u")') axis_name(2-axis(1)),axis_name(2+axis(3)),+1.0d0*sqrt(-eenergy/aalpha)
+                        write(*,'(" (α-FDB-",A2,A2,") - Negative complex root:",xF12.6," +i",xF12.6," a.u")') axis_name(2-axis(1)),axis_name(2+axis(3)),-1.0d0*sqrt(-eenergy/aalpha)
                     end if
-                else if (abs(aalpha).lt.tol) then 
-                        ! Angular-aalpha is neglegible --> ax**1+b=0
-                    tmp_root(i,1)=-real(eenergy)/real(mmu);tmp_root(i,2)=0.0d0
-                    root(i,3)=phi
+                    continue
+                else
+                    !    ax**2-b=0 ---> The solution is proven to be real. Double signed root == tmp_root(i)=positive_root tmp_root(i+1)=negative_root
+                    tmp_root(1)=+1.0d0*dsqrt(-real(eenergy)/real(aalpha)); tmp_root(2)=-tmp_root(1)
                     if (Guillem(6).eqv..TRUE.) then !-- Print the specific solutions
-                        write(*,'(" (α-FDB-FxFy) - Negelgible alpha solution:",xF18.6)') tmp_root(i,1)
-                    end if
-                else 
-                        ! Actual second degree equation --> ax**2+bx**1+c=0
-                    discriminant=real(mmu)**2-4.0d0*real(aalpha)*real(eenergy)
-                    if (discriminant.ge.0.0d0) then !-- The solution is not going to be complex
-                        tmp_root(i,1)=-mmu+sqrt(discriminant)/2.0d0/aalpha
-                        tmp_root(i,2)=-mmu-sqrt(discriminant)/2.0d0/aalpha
-                        root(i,3)=phi
-                    end if
-                    if (Guillem(6).eqv..TRUE.) then !-- Print the specific solutions
-                        write(*,'(" (α-FDB-FxFy) - Positive pure second degree root:",xF18.6)') -mmu+sqrt(discriminant)/2.0d0/aalpha
-                        write(*,'(" (α-FDB-FxFy) - Negative pure second degree root:",xF18.6)') -mmu-sqrt(discriminant)/2.0d0/aalpha
+                        write(*,'(" (α-FDB-",A2,A2,") - Neglegible dipole moment positive root:",xF18.6," a.u")') axis_name(2-axis(1)),axis_name(2+axis(3)),tmp_root(1)
+                        write(*,'(" (α-FDB-",A2,A2,") - Neglegible dipole moment negative root:",xF18.6," a.u")') axis_name(2-axis(1)),axis_name(2+axis(3)),tmp_root(2)
                         write(*,*)
                     end if
+                       
+                        !-- Check whether the solution is inside the maximum scanning radius 
+                    min_root=abs(tmp_root(1))
+                    if (min_root.le.max_radius) then
+                        root(i,1)=min_root; root(i,2)=phi
+                    end if
                 end if
-                if (abs(tmp_root(i,1)).eq.abs(tmp_root(i,2))) then ! The root is double signed
-                    root(i,1)=abs(tmp_root(i,1)) !-- Absolute value because there is no need of negative modulus
-                                                 !   the direction of the electric field can be tuned with the theta and phi
-                end if  
-                    ! Declare tmp_mu and tmp_alpha as 0 to restart the computation of the roots
-                tmp_mu=0.0d0;tmp_alpha=0.0d0
+
+            else if (abs(aalpha).lt.tol) then ! angular-aalpha is neglegible --> ax**1+b=0
+                tmp_root(1)=-real(eenergy)/real(mmu)
+                min_root=abs(tmp_root(1))
+                if (Guillem(6).eqv..TRUE.) then !-- Print the specific solutions
+                    write(*,'(" (α-FDB-",A2,A2,") - Neglegible alpha root:",xF12.6," a.u")') axis_name(2-axis(1)),axis_name(2+axis(3)),min_root
+                end if
+
+                    !-- Check whether the solution is inside the maximum scanning radius
+                if (min_root.le.max_radius) then
+                    root(i,1)=min_root; root(i,2)=phi
+                end if
+
+            else ! complete second degree equation
+                discriminant=mmu**2.0d0-4.0d0*aalpha*eenergy
+
+                if (discriminant.ge.0.0d0) then
+                    tmp_root(1)=-mmu+dsqrt(discriminant)/2.0d0/aalpha
+                    tmp_root(2)=-mmu-dsqrt(discriminant)/2.0d0/aalpha
+                    if (Guillem(6).eqv..TRUE.) then !-- Print the specific solutions
+                        write(*,'(" (α-FDB-",A2,A2,") - Discriminant of the second degree equation:",xF18.12)') axis_name(2-axis(1)),axis_name(2+axis(3)),discriminant
+                        write(*,'(" (α-FDB-",A2,A2,") - Positive pure second degree root:",xF12.6," a.u")') axis_name(2-axis(1)),axis_name(2+axis(3)),tmp_root(1)
+                        write(*,'(" (α-FDB-",A2,A2,") - Negative pure second degree root:",xF12.6," a.u")') axis_name(2-axis(1)),axis_name(2+axis(3)),tmp_root(2)
+                        write(*,*)
+                    end if
+
+                        !-- Get the closest-to-zero solution; tmp_root(1) and tmp_root(2) are not necessary equal; only when the discriminant is zero
+                    min_root=abs(tmp_root(1))
+                    if (abs(tmp_root(2)).le.min_root) min_root=abs(tmp_root(2))
+                    
+                        !-- Check whether the solution is inside the maximum scanning radius
+                    if (min_root.le.max_radius) then
+                        root(i,1)=min_root; root(i,2)=phi
+                    end if
+
+                else ! complex solutions
+                    if (Guillem(6).eqv..TRUE.) then
+                            !-- They are computed as such so they are not stored in memory and only affect the time because of the printing
+                        write(*,'(" (α-FDB-",A2,A2,") - Discriminant of the second degree equation:",xF18.12)') axis_name(2-axis(1)),axis_name(2+axis(3)),discriminant
+                        write(*,'(" (α-FDB-",A2,A2,") - Positive pure complex second degree root:",xF12.6," +i",xF12.6," a.u")') axis_name(2-axis(1)),axis_name(2+axis(3)),-mmu+sqrt(mmu**2-4.0d0*aalpha*eenergy)/2.0d0/aalpha
+                        write(*,'(" (α-FDB-",A2,A2,") - Negative pure complex second degree root:",xF12.6," +i",xF12.6," a.u")') axis_name(2-axis(1)),axis_name(2+axis(3)),-mmu-sqrt(mmu**2-4.0d0*aalpha*eenergy)/2.0d0/aalpha
+                        write(*,*)
+                    end if
+                    continue
+                end if
+
+            end if
+            if (Guillem(8).eqv..TRUE.) then
+                write(*,'(" (α-FDB-",A2,A2,") - Cylindrical solutions (ρ,φ;",A2,") = (",F15.10,",",xF6.4,",",xF10.6,") a.u ")') axis_name(2-axis(1)),axis_name(2+axis(3)),axis_name(gpc),min_root,phi,F(gpc)
+                write(*,'(" (α-FDB-",A2,A2,") - Cartesian solutions (",A2,",",A2,";",A2,") = (",xF12.6,",",xF12.6,",",xF12.6,") a.u ")') &
+                & axis_name(2-axis(1)),axis_name(2+axis(3)),axis_name(2-axis(1)),axis_name(2+axis(3)),axis_name(gpc),min_root*F(2-axis(1)),min_root*F(2+axis(3)),F(gpc)
+                write(*,*)
+            end if
+        end do
+
+        !#################################################################################!
+        !                  Bubble Sort algorithm for matrix root(i,j)                     !
+        !#################################################################################!
+
+            !-- Get the number of solutions (dimsort)
+        dimsort=0
+        do i=1,grid
+            if (root(i,1).gt.0.0d0) then
+                dimsort=dimsort+1
+            end if 
+        end do
+        allocate(sort(dimsort,2))
+
+            !-- Pass the solutions to the sorting matrix
+        n=1
+        do i=1,grid
+            if (root(i,1).gt.0.0d0) then
+                sort(n,1)=root(i,1); sort(n,2)=root(i,2)
+                n=n+1
+            end if
+        end do
+
+            !-- Bubble Sort the sorting matrix
+        do i=dimsort,2,-1
+            do j=1,i-1
+                if(sort(j,1).gt.sort(j+1,1)) then
+                    tmp_sort(1)=sort(j+1,1); tmp_sort(2)=sort(j+1,2)
+                    sort(j+1,1)=sort(j,1); sort(j+1,2)=sort(j,2)
+                    sort(j,1)=tmp_sort(1); sort(j,2)=tmp_sort(2)
+                end if
             end do
-        end if 
+        end do
+
+            !-- Print the Bubble Sort matrix
+        if (Guillem(9).eqv..TRUE.) then
+            write(*,*)
+            write(*,'(" (α-FDB-",A2,A2,") - Number of solutions:",xI2)') axis_name(2-axis(1)),axis_name(2+axis(3)),dimsort
+            write(*,*) "----------------------------------------------------------------------------------------------" 
+            do i=1,dimsort
+                write(*,'(" (α-FDB-",A2,A2,") - Bubble sort matrix - Row ",I2," == (ρ,φ;",A2,") = (",xF12.10,",",xF6.4,",",xF6.4")")') axis_name(2-axis(1)),axis_name(2+axis(3)),i,axis_name(gpc),sort(i,1),sort(i,2),F(gpc)
+            end do
+            write(*,*) "----------------------------------------------------------------------------------------------" 
+        end if
+
+            !-- Print of the absolute minimum solution
+        write(*,*)
+        write(*,'(" (α-FDB-",A2,A2,") - The minimum solution in cylindrical cooridnates: (ρ,φ;",A2,")   = (",xF13.10,",",xF6.4,",",xF6.4,") (*10^-4) a.u ")') &
+        & axis_name(2-axis(1)),axis_name(2+axis(3)),axis_name(gpc),sort(1,1)*1.0d4,sort(1,2),F(gpc)*1.0d4
+        write(*,'(" (α-FDB-",A2,A2,") - The minimum solution in Cartesian cooridnates:   (",A2,",",A2,";",A2,") = (",F12.6,",",F12.6,",",F12.6,") (*10^-4) a.u ")') &
+        & axis_name(2-axis(1)),axis_name(2+axis(3)),axis_name(2-axis(1)),axis_name(2+axis(3)),axis_name(gpc),sort(1,1)*dcos(sort(1,2))*1.0d4,sort(1,1)*dsin(sort(1,2))*1.0d4,F(gpc)*1.0d4
+        write(*,*)
+        
     end if
 
 !================================= α-VOAM-2D ==========================================
@@ -673,253 +803,198 @@ contains
 !================================= β-VOAM-2D ==========================================
 
     if (order_nlop.eq.3) then
-            ! XY=(1,1,0) gpc=3 // XZ=(1,0,1) gpc=2 // YZ=(0,1,1) gpc=1
+
+            ! XY=(1,1,0) gpc=3,axis(gpc)=0 --> Step=1 // XZ=(1,0,1) gpc=2,axis(gpc)=0 --> Step=2 // YZ=(0,1,1) gpc=1,axis(gpc)=0 --> Step=1
         step=nint(1+abs(cos(0.5d0*PI*gpc)))
-        tmp_E=E_0-abs(redox_coef)*redox_potential-target_barrier/6.2751d2     !-- Energy associated to thermochemistry
-        tmp_mu=0.0d0;tmp_alpha=0.0d0;tmp_beta=0.0d0
-            !##############################################################
-                !-- Scanning the XZ or YZ plane
-            !##############################################################
-        if (axis(3).eq.1) then ! Scanning either XZ or YZ
-            do i=1,grid
-                    !-- Theta: 0.le.θ.le.π
-                theta=((i-1)/(1.0d0*grid-1))*PI
-                if (axis(1).eq.1) then
-                    phi=0.0d0*PI;root(i,3)=phi !-- Scanning the XZ plane
-                else if (axis(2).eq.1) then
-                    phi=0.5d0*PI;root(i,3)=phi !-- Scanning the YZ plane
+
+            !-- Initialization of the tmp_NLOP values
+        tmp_energy=E_0-abs(redox_coef)*redox_potential-target_barrier/6.2751d2 !-- Energy associated to thermochemistry
+
+        do i=1,grid
+            tmp_mu=0.0d0; tmp_alpha=0.0d0; tmp_beta=0.0d0; tmp_root=0.0d0
+
+                !-- 0.le.φ.le.2π
+            phi=((i-1)/(1.0d0*grid-1))*2.0d0*PI
+
+                !-- Declaration of the field vector in cylindrical coordinates
+            F(gpc)=initial_position(gpc);F(2-axis(1))=dcos(phi);F(2+axis(3))=dsin(phi)
+                    !-- XY plane: F(1)=cos(phi); F(2)=sin(phi); F(3)=Fz
+                    !-- XZ plane: F(1)=cos(phi); F(3)=sin(phi); F(2)=Fy
+                    !-- YZ plane: F(2)=cos(phi); F(3)=sin(phi); F(1)=Fx
+
+                !-- The maximum radius of scan is going to decrease with the increase of the constant field. The general expression if its decrement is the following
+            max_radius=dsqrt(radius**2-F(gpc)**2)
+
+                !-- Initialization of the calculation of the (constant-field dependent) energy and angular alpha
+            tmp_energy=tmp_energy-mu(gpc)*F(gpc)-0.5d0*alpha(gpc,gpc)*F(gpc)**2-(1.0d0/6.0d0)*beta(gpc,gpc,gpc)*F(gpc)**3
+            tmp_alpha=tmp_alpha+2.0d0*(alpha(2-axis(1),2+axis(3))+beta(2-axis(1),2+axis(3),gpc)*F(gpc))*sin(2.0d0*phi)
+
+                !-- Computation of the angular NLOP and declaration of the parameters for the third degree equation
+            do j=(2-axis(1)),(2+axis(3)),step
+                    !-- Angular dipole moment
+                tmp_mu=tmp_mu+F(j)*(mu(j)+alpha(j,gpc)*F(gpc)+beta(j,gpc,gpc)*F(gpc)**2)
+
+                    !-- Angular polarizabilty matrix
+                tmp_alpha=tmp_alpha+(alpha(j,j)+beta(j,j,gpc)*F(gpc))*F(gpc)**2
+
+                    !-- Angular hyperpolarizability tensor
+                tmp_beta=tmp_beta+beta(j,j,j)*F(j)**3+3.0d0*beta(2-axis(1),j,2+axis(1))*F(j)*dsin(2.0d0*phi)
+            end do
+            eenergy=cmplx(tmp_energy,0.0d0) 
+            mmu=-cmplx(tmp_mu,0.0d0)
+            aalpha=-0.5d0*cmplx(tmp_alpha,0.0d0)
+            bbeta=-(1.0d0/6.0d0)*cmplx(tmp_beta,0.0d0)
+
+                !-- Computation of the specific parameters for the third degree solution
+            p=(3.0d0*bbeta*mmu-aalpha**2)/3.0d0/bbeta**2
+            q=(2.0d0*aalpha**3-9.0d0*bbeta*aalpha*mmu+27.0d0*eenergy*bbeta**2)/27.0d0/bbeta**3
+            omega=real(0.25d0*q**2+(1.0d0/27.0d0)*p**3)
+            if (Guillem(4).eqv..TRUE.) then
+                write(*,'(" Phi=    ",xF6.4)') phi
+                write(*,'(" Energy coefficient:             ",xF18.12)') real(eenergy)
+                write(*,'(" Dipole moment coefficient:      ",xF18.12)') real(mmu)
+                write(*,'(" Polarizability coefficient:     ",xF18.12)') real(aalpha)
+                write(*,'(" Hyperpolarizability coefficient:",xF18.12)') real(bbeta)
+                write(*,'(" P=",xF18.12,", Q=",xF18.12," and ω=",xF18.12)') real(p),real(q),omega
+                write(*,*)
+            end if
+           
+            !##################################################################!
+            !           Computation of the third degree solutions              !
+            !##################################################################!
+ 
+            if (omega.gt.tol) then ! ω > 0 --> There is a single real root
+                tmp_root(1)=sign(abs(-0.5d0*q-sqrt(0.25d0*q**2+p**3/27.0d0))**(1.0d0/3.0d0),real(-0.5d0*q-sqrt(0.25d0*q**2+p**3/27.0d0)))
+                tmp_root(1)=tmp_root(1)+sign(abs(-0.5d0*q+sqrt(0.25d0*q**2+p**3/27.0d0))**(1.0d0/3.0d0),real(-0.5d0*q+sqrt(0.25d0*q**2+p**3/27.0d0)))
+                tmp_root(1)=tmp_root(1)-aalpha/3.0d0/bbeta
+             
+                    !-- Print the specific raw solutions
+                if (Guillem(6).eqv..TRUE.) then
+                    write(*,'(" Phi=    ",xF6.4)') phi
+                    write(*,'(" (β-FDB-"A2,A2") - Unique specific solution:",xF18.6)') axis_name(2-axis(1)),axis_name(2+axis(3)),tmp_root(1)
+                    write(*,*) "Complex solutions skipped."
+                    write(*,*)
                 end if
 
-                    !-- Declare F as a variable vector
-                F(1)=dsin(theta)*cos(phi);F(2)=dsin(theta)*dsin(phi);F(3)=dcos(theta)
+                    !-- Checking whether the solution is inside the radius of the sphere
+                min_root=abs(tmp_root(1))
+                if (min_root.le.max_radius) then
+                    root(i,1)=tmp_root(1); root(i,2)=phi
+                end if
 
-                    !-- Initialization of angular alpha's calculation
-                tmp_alpha=tmp_alpha+2.0d0*F(2-axis(1))*F(2+axis(3))*alpha(2-axis(1),2+axis(3))-beta(2-axis(1),2+axis(3),gpc)*radius*F(gpc)
-                do j=(2-axis(1)),(2+axis(3)),step
-                    tmp_mu=tmp_mu+F(j)*(mu(j)+alpha(j,gpc)*radius*F(gpc)-beta(j,gpc,gpc)*(radius**2)*F(gpc)**2)
-                    tmp_alpha=tmp_alpha+F(j)**2*(alpha(j,j)+beta(j,j,gpc)*radius*F(gpc))
-                    tmp_beta=tmp_beta+beta(j,j,j)*F(j)**3+3.0d0*beta(2-axis(1),j,2+axis(3))*F(2-axis(1))*F(2+axis(3))*F(j)
+            else if (abs(omega).lt.tol) then ! ω = 0 --> Three real solutions, two of them equal 
+                tmp_root(1)=+2.0d0*sign(abs(-0.5d0*q)**(1.0d0/3.0d0),real(-0.5d0*q))-aalpha/3.0d0/bbeta
+                tmp_root(2)=-0.5d0*tmp_root(1); tmp_root(3)=tmp_root(2)
+                !tmp_root(2)=-1.0d0*sign(abs(-0.5d0*q)**(1.0d0/3.0d0),real(-0.5d0*q))-aalpha/3.0d0/bbeta
+
+                    !-- Print the specific raw solutions
+                if (Guillem(6).eqv..TRUE.) then
+                    write(*,'(" Phi=    ",xF6.4)') phi
+                    write(*,'(" (β-FDB-"A2,A2") - First specific solution: ",xF18.6)') axis_name(2-axis(1)),axis_name(2+axis(3)),tmp_root(1)
+                    write(*,'(" (β-FDB-"A2,A2") - Second specific solution:",xF18.6)') axis_name(2-axis(1)),axis_name(2+axis(3)),tmp_root(2) 
+                    write(*,'(" (β-FDB-"A2,A2") - Third specific solution: ",xF18.6)') axis_name(2-axis(1)),axis_name(2+axis(3)),tmp_root(3)
+                    write(*,*)
+                end if
+
+                    !-- Get the closest-to-zero solution
+                min_root=tmp_root(1)
+                if (abs(tmp_root(2)).lt.abs(min_root)) min_root=abs(tmp_root(2))
+
+                    !-- Checking whether the solutions are inside the sphere
+                if (min_root.le.max_radius) then
+                    root(i,1)=min_root; root(i,2)=phi
+                end if
+
+            else if (omega.lt.0.0d0) then ! ω < 0 --> Three different real solutions
+                angle=dacos(-0.5d0*real(q)/sqrt(-1.0d0*real(p)**3/27.0d0))
+                tmp_root(1)=2.0d0*sqrt(-p/3.0d0)*cos(angle/3.0d0)           
+                tmp_root(2)=2.0d0*sqrt(-p/3.0d0)*cos((angle+2.0d0*PI)/3.0d0)
+                tmp_root(3)=2.0d0*sqrt(-p/3.0d0)*cos((angle+4.0d0*PI)/3.0d0)
+
+                    !-- Print the specific raw solutions
+                if (Guillem(6).eqv..TRUE.) then
+                    write(*,'(" Phi=    ",xF6.4)') phi
+                    write(*,'(" (β-FDB-FxFy) - First specific solution: ",xF18.6)') tmp_root(1)
+                    write(*,'(" (β-FDB-FxFy) - Second specific solution:",xF18.6)') tmp_root(2)
+                    write(*,'(" (β-FDB-FxFy) - Third specific solution: ",xF18.6)') tmp_root(3)
+                    write(*,*)
+                end if
+                    
+                    !-- Get the closest-to-zero solution
+                min_root=tmp_root(1)
+                do j=2,3
+                    if (abs(tmp_root(j)).le.abs(min_root)) min_root=abs(tmp_root(j))
                 end do
-        
-                    !-- Declaration of the cubic equation parameters
-                eenergy=cmplx(tmp_E,0.0d0); mmu=-cmplx(tmp_mu,0.0d0)
-                aalpha=-0.5d0*cmplx(tmp_alpha,0.0d0)
-                bbeta=(1.0d0/6.0d0)*cmplx(tmp_beta,0.0d0)
-
-                    !-- Computation of the specific parameters for the third degree solution
-                p=(3.0d0*bbeta*mmu-aalpha**2)/3.0d0/bbeta**2
-                q=(2.0d0*aalpha**3-9.0d0*bbeta*aalpha*mmu+27.0d0*eenergy*bbeta**2)/27.0d0/bbeta**3
-                omega=real(0.25d0*q**2+(1.0d0/27.0d0)*p**3)
-    
-                    !-- Print the coefficients for the third degree equation
-                if (Guillem(4).eqv..TRUE.) then
-                    write(*,'(" Angles: Theta=",xF6.4," and Phi=",xF6.4)') theta,phi
-                    write(*,'(" Energy coefficient:             ",xF18.6)') real(eenergy)
-                    write(*,'(" Dipole moment coefficient:      ",xF18.6)') real(mmu)
-                    write(*,'(" Polarizability coefficient:     ",xF18.6)') real(aalpha)
-                    write(*,'(" Hyperpolarizability coefficient:",xF18.6)') real(aalpha)
-                    write(*,'(" P=",xF18.6,", Q=",xF18.6," and ω=",xF18.6," parameters")') p,q,omega
-                    write(*,*)
-                end if
-
-                !###############################################################
-                    !-- There is a single real root
-                !###############################################################
-                if(omega.gt.0.0d0) then
-                    tmp_root(1,1)=sign(abs(-0.5d0*q-sqrt(0.25d0*q**2+p**3/27.0d0))**(1.0d0/3.0d0),real(-0.5d0*q-sqrt(0.25d0*q**2+p**3/27.0d0)));tmp_root(1,2)=0.0d0
-                    tmp_root(1,1)=tmp_root(1,1)+sign(abs(-0.5d0*q+sqrt(0.25d0*q**2+p**3/27.0d0))**(1.0d0/3.0d0),real(-0.5d0*q+sqrt(0.25d0*q**2+p**3/27.0d0)))
-                    tmp_root(1,1)=tmp_root(1,1)-aalpha/3.0d0/bbeta
                 
-                        !-- Print the specific raw solutions
-                    if (Guillem(6).eqv..TRUE.) then
-                        write(*,'(" Angles: Theta=",xF6.4," and Phi=",xF6.4)') theta,phi
-                        write(*,'(" (β-FDB-"A2,A2") - Unique specific solution:",xF18.6)') axis_name(2-axis(1)),axis_name(2+axis(3)),real(root(i,1))
-                        write(*,*) "Complex solutions skipped."
-                        write(*,*)
-                    end if
+                    !-- Check whether there are solutions inside the scanning sphere or not
+                if (min_root.lt.max_radius) then
+                    root(i,1)=min_root; root(i,2)=phi
+                end if 
 
-                        !-- Checking whether the solution is inside the radius of the sphere
-                    if (abs(root(1,1)).gt.max_radius) then
-                        continue
-                    else !it is inside
-                        root(i,1)=real(tmp_root(1,1))
-                    end if
+            end if
+            if (Guillem(8).eqv..TRUE.) then
+                write(*,'(" (β-FDB-",A2,A2,") - Cylindrical solutions (ρ,φ;",A2,") = (",xF13.10,",",xF6.4,",",xF10.6,") a.u ")') axis_name(2-axis(1)),axis_name(2+axis(3)),axis_name(gpc),min_root,phi,F(gpc)
+                write(*,'(" (β-FDB-",A2,A2,") - Cartesian solutions (",A2,",",A2,";",A2,") = (",F18.12,",",F18.12,",",F18.12,") a.u ")') &
+                & axis_name(2-axis(1)),axis_name(2+axis(3)),axis_name(2-axis(1)),axis_name(2+axis(3)),axis_name(gpc),min_root*F(2-axis(1)),min_root*F(2+axis(3)),F(gpc)
+                write(*,*)
+            end if
 
-                !###############################################################
-                    !-- There are three real roots, two of them equal
-                !###############################################################
-                else if (abs(omega).lt.tol) then !-- Three real roots, two of them are equal
-                    tmp_root(1,1)=2.0d0*sign(abs(-0.5d0*q)**(1.0d0/3.0d0),real(-0.5d0*q))-aalpha/3.0d0/bbeta;tmp_root(2,1)=0.0d0
-                    tmp_root(2,1)=1.0d0*sign(abs(-0.5d0*q)**(1.0d0/3.0d0),real(-0.5d0*q))-aalpha/3.0d0/bbeta;tmp_root(2,2)=0.0d0
-                    tmp_root(3,1)=tmp_root(2,1);tmp_root(3,2)=0.0d0
-
-                        !-- Print the specific raw solutions
-                    if (Guillem(6).eqv..TRUE.) then
-                        write(*,'(" Angles: Theta=",xF6.4," and Phi=",xF6.4)') theta,phi
-                        write(*,'(" (β-FDB-"A2,A2") - First specific solution: ",xF18.6)') axis_name(2-axis(1)),axis_name(2+axis(3)),real(tmp_root(1,1))
-                        write(*,'(" (β-FDB-"A2,A2") - Second specific solution:",xF18.6)') axis_name(2-axis(1)),axis_name(2+axis(3)),real(tmp_root(2,1))
-                        write(*,'(" (β-FDB-"A2,A2") - Third specific solution: ",xF18.6)') axis_name(2-axis(1)),axis_name(2+axis(3)),real(tmp_root(3,1))
-                        write(*,*)
-                    end if
-
-                        !-- Checking whether the solutions are inside the sphere
-                    if (abs(tmp_root(1,1)).gt.max_radius.and.abs(tmp_root(2,1)).gt.max_radius) then !-- Both solutions are outside the sphere radius
-                        continue
-                    else
-                        root(i,1)=real(tmp_root(1,1))
-                        if (abs(tmp_root(2,1)).lt.root(i,1)) root(i,1)=abs(tmp_root(2,1))
-                    end if
-
-                !###############################################################
-                    !-- There three different real roots
-                !###############################################################
-                else if (omega.lt.0.0d0) then
-                    angle=dacos(-0.5d0*real(q)/sqrt(-1.0d0*real(p)**3/27.0d0))
-                    tmp_root(1,1)=2.0d0*sqrt(-p/3.0d0)*cos(angle/3.0d0);tmp_root(1,2)=0.0d0
-                    tmp_root(2,1)=2.0d0*sqrt(-p/3.0d0)*cos((angle+2.0d0*PI)/3.0d0);tmp_root(2,2)=0.0d0
-                    tmp_root(3,1)=2.0d0*sqrt(-p/3.0d0)*cos((angle+4.0d0*PI)/3.0d0);tmp_root(3,2)=0.0d0
-
-                        !-- Print the specific raw solutions
-                    if (Guillem(6).eqv..TRUE.) then
-                        write(*,'(" Angles: Theta=",xF6.4," and Phi=",xF6.4)') theta,phi
-                        write(*,'(" (β-FDB-FxFy) - First specific solution: ",xF18.6)') real(tmp_root(1,1))
-                        write(*,'(" (β-FDB-FxFy) - Second specific solution:",xF18.6)') real(tmp_root(2,1))
-                        write(*,'(" (β-FDB-FxFy) - Third specific solution: ",xF18.6)') real(tmp_root(3,1))
-                        write(*,*)
-                    end if
-
-                        !-- Check whether there are solutions inside the scanning sphere or not
-                    if (abs(tmp_root(1,1)).gt.max_radius.and.abs(tmp_root(2,1)).gt.max_radius.and.abs(tmp_root(3,1)).gt.max_radius) then ! All solutions are outside the sphere radius. Skip solution
-                        continue
-                    else !at least one of them is inside the sphere
-                        root(i,1)=real(tmp_root(1,1))
-                        do j=2,3 ! Get the minimum solution for each iteration
-                            if (abs(tmp_root(j,1)).lt.abs(root(i,1))) root(i,1)=abs(tmp_root(j,1))
-                        end do
-                    end if
-                end if
+        end do
     
-                    !-- Setting tmp_beta, tmp_alpha and tmp_mu to zero for the following iteration
-                tmp_mu=0.0d0;tmp_alpha=0.0d0;tmp_beta=0.0d0
-            end do
-        else if (axis(3).eq.0) then ! Scanning XY
-            do i=1,2*grid
-                    ! Phi: 0.le.φ.le.2π
-                phi=((i-1)/(2.0d0*grid-1))*2.0d0*PI;theta=0.5d0*PI; root(i,2)=theta; root(i,3)=phi
+        !#################################################################################!
+        !                  Bubble Sort algorithm for matrix root(i,j)                     !
+        !#################################################################################!
 
-                    !-- Declare F as a variable vector
-                F(1)=dsin(theta)*dcos(phi);F(2)=dsin(theta)*dsin(phi);F(3)=dcos(theta)
-                tmp_E=tmp_E-mu(gpc)*radius*F(gpc)-0.5d0*(radius**2)*alpha(gpc,gpc)*F(gpc)**2+(1.0d0/6.0d0)*(radius**3)*beta(gpc,gpc,gpc)*F(gpc)**3 !-- Energy associated to constant fields
+            !-- Get the number of solutions (dimsort)
+        dimsort=0
+        do i=1,grid
+            if (root(i,1).gt.0.0d0) then
+                dimsort=dimsort+1
+            end if 
+        end do
+        allocate(sort(dimsort,2))
 
-                    !-- Initialization of angular alpha's calculation
-                tmp_alpha=tmp_alpha+2.0d0*F(2-axis(1))*F(2+axis(3))*(alpha(2-axis(1),2+axis(3))-beta(2-axis(1),2+axis(3),gpc)*radius*F(gpc))
-                do j=(2-axis(1)),(2+axis(3)),step
-                    tmp_mu=tmp_mu+F(j)*(mu(j)+alpha(j,gpc)*radius*F(gpc)-beta(j,gpc,gpc)*(radius**2)*F(gpc)**2)
-                    tmp_alpha=tmp_alpha+F(j)**2*(alpha(j,j)+beta(j,j,gpc)*radius*F(gpc))
-                    tmp_beta=tmp_beta+beta(j,j,j)*F(j)**3+3.0d0*beta(2-axis(1),j,2+axis(3))*F(2-axis(1))*F(2+axis(3))*F(j)
-                end do 
+            !-- Pass the solutions to the sorting matrix
+        n=1
+        do i=1,grid
+            if (root(i,1).gt.0.0d0) then
+                sort(n,1)=root(i,1); sort(n,2)=root(i,2)
+                n=n+1
+            end if
+        end do
 
-                    !-- Declaration of the cubic equation parameters
-                eenergy=cmplx(tmp_E,0.0d0); mmu=-cmplx(tmp_mu,0.0d0)
-                aalpha=-0.5d0*cmplx(tmp_alpha,0.0d0)
-                bbeta=(1.0d0/6.0d0)*cmplx(tmp_beta,0.0d0)
-
-                    !-- Computation of the specific parameters for the third degree solution
-                p=(3.0d0*bbeta*mmu-aalpha**2)/3.0d0/bbeta**2
-                q=(2.0d0*aalpha**3-9.0d0*bbeta*aalpha*mmu+27.0d0*eenergy*bbeta**2)/27.0d0/bbeta**3
-                omega=real(0.25d0*q**2+(1.0d0/27.0d0)*p**3)
-
-                    !-- Print the coefficients for the third degree equation
-                if (Guillem(4).eqv..TRUE.) then
-                    write(*,'(" Angles: Theta=",xF6.4," and Phi=",xF6.4)')  theta,phi
-                    write(*,'(" Energy coefficient:             ",xF18.6)') real(eenergy)
-                    write(*,'(" Dipole moment coefficient:      ",xF18.6)') real(mmu)
-                    write(*,'(" Polarizability coefficient:     ",xF18.6)') real(aalpha)
-                    write(*,'(" Hyperpolarizability coefficient:",xF18.6)') real(aalpha)
-                    write(*,'(" P=",xF18.6,", Q=",xF18.6," and ω=",xF18.6," parameters")') p,q,omega
-                    write(*,*)
+            !-- Bubble Sort the sorting matrix
+        do i=dimsort,2,-1
+            do j=1,i-1
+                if(sort(j,1).gt.sort(j+1,1)) then
+                    tmp_sort(1)=sort(j+1,1); tmp_sort(2)=sort(j+1,2)
+                    sort(j+1,1)=sort(j,1); sort(j+1,2)=sort(j,2)
+                    sort(j,1)=tmp_sort(1); sort(j,2)=tmp_sort(2)
                 end if
-
-                !###############################################################
-                    !-- There is a single real root
-                !###############################################################
-                if(omega.gt.0.0d0) then
-                    tmp_root(1,1)=sign(abs(-0.5d0*q-sqrt(0.25d0*q**2+p**3/27.0d0))**(1.0d0/3.0d0),real(-0.5d0*q-sqrt(0.25d0*q**2+p**3/27.0d0)));tmp_root(1,2)=0.0d0
-                    tmp_root(1,1)=tmp_root(1,1)+sign(abs(-0.5d0*q+sqrt(0.25d0*q**2+p**3/27.0d0))**(1.0d0/3.0d0),real(-0.5d0*q+sqrt(0.25d0*q**2+p**3/27.0d0)))
-                    tmp_root(1,1)=tmp_root(1,1)-aalpha/3.0d0/bbeta
-                    if (Guillem(6).eqv..TRUE.) then
-                        write(*,'(" Angles: Theta=",xF6.4," and Phi=",xF6.4)')  theta,phi
-                        write(*,'(" (β-FDB-FxFy) - Unique specific solution: ",xF18.6)') real(root(i,1))
-                        write(*,*) "Complex solutions skipped."
-                        write(*,*)
-                    end if
-
-                        !-- Checking whether the solution is inside the radius of the sphere
-                    if (abs(root(1,1)).gt.max_radius) then
-                        continue
-                    else !it is inside
-                        root(i,1)=real(tmp_root(1,1))
-                    end if
-
-                !###############################################################
-                    !-- There are three real roots, two of them equal
-                !###############################################################
-                else if (abs(omega).lt.tol) then !-- Three real roots, two of them are equal
-                    tmp_root(1,1)=2.0d0*sign(abs(-0.5d0*q)**(1.0d0/3.0d0),real(-0.5d0*q))-aalpha/3.0d0/bbeta;tmp_root(2,1)=0.0d0
-                    tmp_root(2,1)=1.0d0*sign(abs(-0.5d0*q)**(1.0d0/3.0d0),real(-0.5d0*q))-aalpha/3.0d0/bbeta;tmp_root(2,2)=0.0d0
-                    tmp_root(3,1)=tmp_root(2,1);tmp_root(3,2)=0.0d0
-
-                        !-- Print all the specific raw roots
-                    if (Guillem(6).eqv..TRUE.) then
-                        write(*,'(" Angles: Theta=",xF6.4," and Phi=",xF6.4)')  theta,phi
-                        write(*,'(" (β-FDB-FxFy) - First specific solution: ",xF18.6)') real(tmp_root(1,1))
-                        write(*,'(" (β-FDB-FxFy) - Second specific solution:",xF18.6)') real(tmp_root(2,1))
-                        write(*,'(" (β-FDB-FxFy) - Third specific solution: ",xF18.6)') real(tmp_root(3,1))
-                        write(*,*)
-                    end if
-
-                        !-- Checking whether the solutions are inside the sphere
-                    if (abs(tmp_root(1,1)).gt.max_radius.and.abs(tmp_root(2,1)).gt.max_radius) then ! -- Both solutions are outside the sphere radius
-                        continue
-                    else 
-                        root(i,1)=real(tmp_root(1,1))
-                        if (abs(tmp_root(2,1)).lt.root(i,1)) root(i,1)=abs(tmp_root(2,1))
-                    end if
-
-                !###############################################################
-                    !-- There three different real roots
-                !###############################################################
-                else if (omega.lt.0.0d0) then !-- Three real non-equal roots
-                    angle=dacos(-0.5d0*real(q)/sqrt(-1.0d0*real(p)**3/27.0d0))
-                    tmp_root(1,1)=2.0d0*sqrt(-p/3.0d0)*cos(angle/3.0d0);tmp_root(1,2)=0.0d0
-                    tmp_root(2,1)=2.0d0*sqrt(-p/3.0d0)*cos((angle+2.0d0*PI)/3.0d0);tmp_root(2,2)=0.0d0
-                    tmp_root(3,1)=2.0d0*sqrt(-p/3.0d0)*cos((angle+4.0d0*PI)/3.0d0);tmp_root(3,2)=0.0d0
-                    if (Guillem(6).eqv..TRUE.) then !-- Print all the specific solutions
-                        write(*,'(" Angles: Theta=",xF6.4," and Phi=",xF6.4)')  theta,phi
-                        write(*,'(" (β-FDB-FxFy) - First specific solution: ",xF18.6)') real(tmp_root(1,1))
-                        write(*,'(" (β-FDB-FxFy) - Second specific solution:",xF18.6)') real(tmp_root(2,1))
-                        write(*,'(" (β-FDB-FxFy) - Third specific solution: ",xF18.6)') real(tmp_root(3,1))
-                        write(*,*)
-                    end if
-
-                        !-- Check whether there are solutions inside the scanning sphere or not
-                    if (abs(tmp_root(1,1)).gt.max_radius.and.abs(tmp_root(2,1)).gt.max_radius.and.abs(tmp_root(3,1)).gt.max_radius) then ! All solutions are outside the sphere radius. Skip solution
-                        continue
-                    else !at least one of them is inside the sphere 
-                        root(i,1)=real(tmp_root(1,1))
-                        do j=2,3 ! Get the minimum solution for each iteration
-                            if (abs(tmp_root(j,1)).lt.abs(root(i,1))) root(i,1)=abs(tmp_root(j,1))
-                        end do
-                    end if
-                end if
-
-                    !-- Setting tmp_beta, tmp_alpha and tmp_mu to zero for the following iteration
-                tmp_mu=0.0d0;tmp_alpha=0.0d0;tmp_beta=0.0d0
             end do
-        end if    
-        ! Fer el sort de la llista de N lements
+        end do
+
+            !-- Print the Bubble Sort matrix
+        if (Guillem(9).eqv..TRUE.) then
+            write(*,*)
+            write(*,'(" (β-FDB-",A2,A2,") - Number of solutions:",xI2)') axis_name(2-axis(1)),axis_name(2+axis(3)),dimsort
+            write(*,*) "----------------------------------------------------------------------------------------------" 
+            do i=1,dimsort
+                write(*,'(" (β-FDB-",A2,A2,") - Bubble sort matrix - Row ",I2," == (ρ,φ;",A2,") = (",xF12.10,",",xF6.4,",",xF6.4")")') axis_name(2-axis(1)),axis_name(2+axis(3)),i,axis_name(gpc),sort(i,1),sort(i,2),F(gpc)
+            end do
+            write(*,*) "----------------------------------------------------------------------------------------------" 
+        end if
+
+            !-- Print of the absolute minimum solution
+        write(*,*)
+        write(*,'(" (β-FDB-",A2,A2,") - The minimum solution in cylindrical cooridnates: (ρ,φ;",A2,")   = (",xF12.10,",",xF6.4,",",xF6.4,") (*10^-4) a.u ")') &
+        & axis_name(2-axis(1)),axis_name(2+axis(3)),axis_name(gpc),sort(1,1)*1.0d4,sort(1,2),F(gpc)*1.0d4
+        write(*,'(" (β-FDB-",A2,A2,") - The minimum solution in Cartesian cooridnates:   (",A2,",",A2,";",A2,") = (",F12.6,",",F12.6,",",F12.6,") (*10^-4) a.u ")') &
+        & axis_name(2-axis(1)),axis_name(2+axis(3)),axis_name(2-axis(1)),axis_name(2+axis(3)),axis_name(gpc),sort(1,1)*dcos(sort(1,2))*1.0d4,sort(1,1)*dsin(sort(1,2))*1.0d4,F(gpc)*1.0d4
+        write(*,*)
+
     end if
-
+    
 !================================= β-VOAM-2D ==========================================
 
     End subroutine VOAM_2D
@@ -930,84 +1005,273 @@ contains
     !=========================================================================!
 !###################################################################################################
 
-    Subroutine VOAM_3D(Guillem,F,radius,axis,axis_name,order_nlop)
+    Subroutine VOAM_3D(Guillem,order_nlop,gpc,radius,axis,initial_position,axis_name,grid)
     implicit none
-    double precision, dimension(3) :: F
     logical, dimension(10) :: Guillem
     integer, dimension(3) :: axis
     character*2,dimension(3) :: axis_name
-    double precision :: radius
-        !-- Only for FDB_μ
-    double precision :: E_FF,numerator,denominator !-- Only for FDB_μ
-        !-- For FDB_α/β 
-    integer order_nlop
+    double precision, dimension(3) :: F,initial_position
+    integer order_nlop,grid
+    double precision :: max_radius,radius
+        !-- Only for μ-FDB
+    double precision :: E_FF,numerator,denominator
+    double precision :: modulus
+        !-- For α/β-FDB 
+    double precision, dimension (3) :: tmp_root,tmp_sort    ! Stores only the modulus
+    double precision, dimension (grid,3) :: root            ! Modulus, theta and phi
+    double precision, allocatable, dimension (:,:) :: sort  ! Bubble Sort matrix
+    double complex :: eenergy,mmu,aalpha,bbeta
+    double complex :: p,q
+    double precision :: omega
+    double precision :: min_root,tmp_energy,tmp_mu,tmp_alpha,tmp_beta
+    double precision :: theta,phi,angle,discriminant
+    integer :: sign_aalpha,sign_eenergy
+    integer :: dimsort,n
+        !-- Integers for iteration
+    integer gpc,step,upper,lower
+    integer i,j,k
+
+!================================ μ-VOAM-3D ==========================================    
+
     if (order_nlop.eq.1) then
         mu=mu+mu_lig(3)
         E_FF=E_0-abs(redox_coef)*redox_potential-(target_barrier/6.2751d2)
         if (Guillem(5).eqv..TRUE.) then
-            write(*,'(" (μ-FDB-XYZ) The equation to be solved is: 0 =",xF7.3," +",xF7.3,xA2," +",xF7.3,xA2," +",xF7.3,xA2)') &
+            write(*,'(" (μ-FDB-XYZ) - The equation to be solved is: 0 =",xF7.3," +",xF7.3,xA2," +",xF7.3,xA2," +",xF7.3,xA2)') &
             & E_FF,mu(1),axis_name(1),mu(2),axis_name(2),mu(3),axis_name(3)
         end if
+
+            !-- Lagrange formulae to compute the Fz component
         numerator=mu(3)*E_FF; denominator=mu(1)**2+mu(2)**2+mu(3)**2
         F(3)=numerator/denominator;F(1)=(mu(1)/mu(3))*F(3);F(2)=(mu(2)/mu(3))*F(3)
-        write(*,'(x"(μ-FDB-XYZ) The minimum field strength is (",A2,",",A2,",",A2,") = (",F7.2,","F7.2,","F7.2,")(*10^-4) a.u")') &
-        & axis_name(1),axis_name(2),axis_name(3),F(1)*1.0d4,F(2)*1.0d4,F(3)*1.0d4
+        modulus=dsqrt(F(1)**2+F(2)**2+F(3)**2)
+
+            !-- Check whether the solution is inside the solving sphere
+        if (modulus.lt.radius) then 
+            write(*,'(" (μ-FDB-XYZ) - The minimum field strength is (",A2,",",A2,",",A2,") = (",F7.2,","F7.2,","F7.2,")(*10^-4) a.u")') &
+            & axis_name(1),axis_name(2),axis_name(3),F(1)*1.0d4,F(2)*1.0d4,F(3)*1.0d4
+        else
+            if (Guillem(6).eqv..TRUE.) then
+                write(*,'(" (μ-FDB-XYZ) - Specific solution is (",A2",",A2,",",A2,") = (",F18.12,F18.12,F18.12,") a.u")') axis_name(1),axis_name(2),axis_name(3),F(1),F(2),F(3)
+                write(*,*)
+            end if
+            write(*,*) "The modulus of the vector is larger than the maximumi input radius"
+            write(*,*)
+        end if
+
     end if
+
+!================================ μ-VOAM-3D ==========================================    
+!################################################################################################################################
+!################################################################################################################################
+!################################################################################################################################
+!################################################################################################################################
+!================================= α-VOAM-3D ==========================================    
+
     if (order_nlop.eq.2) then
+        
+            !-- Initialization of the tmp_NLOP values
+        tmp_energy=E_0-abs(redox_coef)*redox_potential-target_barrier/6.2751d2 !-- Energy associated to thermochemistry
+        
+        do i=1,grid         !-- Loop for theta == π/{grid}
+            do j=1,2*grid   !-- Loop for phi  == 2π/{2*grid}
+                tmp_mu=0.0d0;tmp_alpha=0.0d0
+
+                    !-- Declaration of the scanning angles: 0.le.φ.le.2π && 0.le.θ.le.π
+                theta=((i-1)/(1.0d0*grid-1))*PI; phi=((i-1)/(2.0d0*grid-i))*2.0d0*PI
+
+                    !-- Declaration of the field vectors
+                F(1)=dsin(theta)*dcos(phi);F(2)=dsin(theta)*dsin(phi);F(3)=dcos(theta)
+            
+                    !-- Computation of the angular NLOP
+                do k=1,3
+                        !-- Angular dipole moment
+                    tmp_mu=tmp_mu+mu(k)*F(k)
+    
+                        !-- Angular polarizability matrix
+                    tmp_alpha=tmp_alpha+alpha(k,k)*F(k)**2+2.0d0*alpha(nint(1+0.2d0*k),nint(2+k/3.0d0))*F(nint(1+0.2d0*k))*F(nint(2+k/3.0d0))
+                end do
+                eenergy=cmplx(tmp_energy,0.0d0); mmu=-cmplx(tmp_mu,0.0d0); aalpha=-0.5d0*cmplx(tmp_alpha,0.0d0)
+                if (Guillem(4).eqv..TRUE.) then
+                    write(*,'(" Theta=    ",xF6.4x,"Phi=    ",xF6.4)') theta,phi
+                    write(*,'(" Energy coefficient:        ",xF18.12)') real(eenergy)
+                    write(*,'(" Dipole moment coefficient: ",xF18.12)') real(mmu)
+                    write(*,'(" Polarizability coefficient:",xF18.12)') real(aalpha)
+                    write(*,*)
+                end if 
+                 
+                !##################################################################!
+                !           Computing the second degree solutions                  !
+                !##################################################################!
+
+                if (abs(mmu).lt.tol) then ! angular-mmu is neglegible
+                    sign_aalpha=sign(1.0d0,real(aalpha));sign_eenergy=sign(1.0d0,real(eenergy))
+
+                    if(sign_aalpha.eq.sign_eenergy) then
+                            ! The sign is the same ---> ax**2+b=0 ---> The solution is proven to be complex. Skipped
+                        if(Guillem(6).eqv..TRUE.) then ! Print the specificsolutions
+                                !-- Coded in this way so it is not stored in memory and is computed on-the-fly
+                            write(*,'(" (α-FDB-XYZ) - Positive complex root:",xF12.6," +i",xF12.6," a.u")') +1.0d0*sqrt(-eenergy/aalpha)
+                            write(*,'(" (α-FDB-XYZ) - Negative complex root:",xF12.6," +i",xF12.6," a.u")') -1.0d0*sqrt(-eenergy/aalpha)
+                        end if
+                        continue
+                    else
+                                !    ax**2-b=0 ---> The solution is proven to be real.
+                            !    Double signed root == tmp_root(i)=positive_root  tmp_root(i+1)=negative_root
+                        tmp_root(1)=+1.0d0*dsqrt(-real(eenergy)/real(aalpha)); tmp_root(2)=-tmp_root(1)
+                        if (Guillem(6).eqv..TRUE.) then !-- Print the specific solutions
+                            write(*,'(" (α-FDB-XYZ) - Neglegible dipole moment positive root:",xF18.6," a.u")') tmp_root(1)
+                            write(*,'(" (α-FDB-XYZ) - Neglegible dipole moment negative root:",xF18.6," a.u")') tmp_root(2)
+                            write(*,*)
+                        end if
+
+                            !-- Check whether the solution is inside the maximum scanning radius
+                        min_root=abs(tmp_root(1))
+                        if (min_root.lt.max_radius) then
+                            root(i,1)=min_root; root(i,2)=theta; root(i,3)=phi
+                        end if
+                    end if
+
+                else if (abs(aalpha).lt.tol) then ! angular-aalpha is neglegible --> ax**1+b=0
+                    tmp_root(1)=-real(eenergy)/real(mmu)
+
+                    if (Guillem(6).eqv..TRUE.) then !-- Print the specific solutions
+                        write(*,'(" (α-FDB-XYZ) - Neglegible alpha root:",xF12.6," a.u")') tmp_root(1)
+                    end if
+                        
+                        !-- Check whether the solution is inside the maximum scanning radius
+                    min_root=abs(tmp_root(1))
+                    if (max_radius.gt.abs(tmp_root(1))) then
+                        root(i,1)=min_root; root(i,2)=theta; root(i,3)=phi
+                    end if
+
+                else ! complete second degree equation
+                    discriminant=mmu**2.0d0-4.0d0*aalpha*eenergy
+
+                    if (discriminant.ge.0.0d0) then
+                        tmp_root(1)=-mmu+dsqrt(discriminant)/2.0d0/aalpha
+                        tmp_root(2)=-mmu-dsqrt(discriminant)/2.0d0/aalpha
+                        if (Guillem(6).eqv..TRUE.) then !-- Print the specific solutions
+                            write(*,'(" (α-FDB-XYZ) - Discriminant of the second degree equation:",xF18.12)') discriminant
+                            write(*,'(" (α-FDB-XYZ) - Positive pure second degree root:",xF12.6," a.u")') tmp_root(1)
+                            write(*,'(" (α-FDB-XYZ) - Negative pure second degree root:",xF12.6," a.u")') tmp_root(2)
+                            write(*,*)
+                        end if
+
+                            !-- Get the closest-to-zero solution; tmp_root(1) and tmp_root(2) are not necessary equal; only when the discriminant is zero
+                        min_root=abs(tmp_root(1))
+                        if (abs(tmp_root(2)).lt.min_root) min_root=abs(tmp_root(2))
+
+                            !-- Check whether the solution is inside the maximum scanning radius
+                        if (max_radius.gt.min_root) then
+                            root(i,1)=min_root; root(i,2)=theta; root(i,3)=phi
+                        end if
+
+                    else ! complex solutions
+                        if (Guillem(6).eqv..TRUE.) then
+                                !-- They are computed as such so they are not stored in memory and only affect the time because of the printing
+                            write(*,'(" (α-FDB-XYZ) - Discriminant of the second degree equation:",xF18.12)') discriminant
+                            write(*,'(" (α-FDB-XYZ) - Positive pure complex second degree root:",xF12.6," +i",xF12.6," a.u")') -mmu+sqrt(mmu**2-4.0d0*aalpha*eenergy)/2.0d0/aalpha
+                            write(*,'(" (α-FDB-XYZ) - Negative pure complex second degree root:",xF12.6," +i",xF12.6," a.u")') -mmu-sqrt(mmu**2-4.0d0*aalpha*eenergy)/2.0d0/aalpha
+                            write(*,*)
+                        end if
+                        continue
+                    end if
+
+                end if
+                
+                    !-- Print all min_root's in both cylindrical and Cartesian coordinates
+                if (Guillem(8).eqv..TRUE.) then
+                    write(*,'(" (α-FDB-XYZ) - Cylindrical solutions (R,θ,φ)  = (",xF12.10,",",xF6.4,",",xF6.4,") a.u ")') min_root,theta,phi
+                    write(*,'(" (α-FDB-XYZ) - Cartesian solutions (",A2,",",A2,",",A2,") = (",F12.6,",",F12.6,",",F12.6,") a.u ")') axis_name(1),axis_name(2),axis_name(3),min_root*F(1),min_root*F(2),min_root*F(3)
+                    write(*,*)
+                end if
+
+            end do
+        end do
+
+        !#################################################################################!
+        !                  Bubble Sort algorithm for matrix root(i,j)                     !
+        !#################################################################################!
+
+            !-- Get the number of solutions (dimsort)
+        dimsort=0
+        do i=1,grid
+            if (root(i,1).gt.0.0d0) then
+                dimsort=dimsort+1
+            end if 
+        end do
+        allocate(sort(dimsort,3))
+
+            !-- Pass the solutions to the sorting matrix
+        n=1
+        do i=1,grid
+            if (root(i,1).gt.0.0d0) then
+                sort(n,1)=root(i,1); sort(n,2)=root(i,2); sort(n,3)=root(i,3)
+                n=n+1
+            end if
+        end do
+
+            !-- Bubble Sort the sorting matrix
+        do i=dimsort,2,-1
+            do j=1,i-1
+                if(sort(j,1).gt.sort(j+1,1)) then
+                    tmp_sort(1)=sort(j+1,1); tmp_sort(2)=sort(j+1,2); tmp_sort(3)=sort(j+1,3)
+                    sort(j+1,1)=sort(j,1);   sort(j+1,2)=sort(j,2);   sort(j+1,3)=sort(j,3)
+                    sort(j,1)=tmp_sort(1);   sort(j,2)=tmp_sort(2);   sort(j,3)=tmp_sort(3)
+                end if
+            end do
+        end do
+
+            !-- Print the Bubble Sort matrix
+        if (Guillem(9).eqv..TRUE.) then
+            write(*,*)
+            write(*,'(" (α-FDB-XYZ) - Number of solutions:",xI2)') dimsort
+            write(*,*) "----------------------------------------------------------------------------------------------" 
+            do i=1,dimsort
+                write(*,'(" (α-FDB-XYZ) - Bubble sort matrix - Row ",I2," == (R,θ,φ) = (",xF12.10,",",xF6.4,",",xF6.4")")') i,sort(i,1),sort(i,2),sort(i,3)
+            end do
+            write(*,*) "----------------------------------------------------------------------------------------------" 
+        end if
+
+            !-- Print of the absolute minimum solution
+        write(*,*)
+        write(*,'(" (α-FDB-XYZ) - The minimum solution in polar spherical cooridnates: (R,θ,φ)    = (",xF12.10,",",xF6.4,",",xF6.4,") (*10^-4) a.u ")') &
+        & sort(1,1)*1.0d4,sort(1,2),sort(1,3)
+        write(*,'(" (α-FDB-XYZ) - The minimum solution in Cartesian cooridnates:       (",A2,",",A2,",",A2,") = (",F12.6,",",F12.6,",",F12.6,") (*10^-4) a.u ")') &
+        & axis_name(1),axis_name(2),axis_name(3),sort(1,1)*dsin(sort(1,2))*dcos(sort(1,3))*1.0d4,sort(1,1)*dsin(sort(1,2))*dsin(sort(1,3))*1.0d4,sort(1,1)*dcos(sort(1,2))*1.0d4
+        write(*,*)
+
     end if
+
+!================================= α-VOAM-3D ==========================================    
+!################################################################################################################################
+!################################################################################################################################
+!################################################################################################################################
+!################################################################################################################################
+!================================= β-VOAM-3D ==========================================    
+
     if (order_nlop.eq.3) then
     end if
+
+!================================= β-VOAM-3D ==========================================    
     End subroutine VOAM_3D
+
 End module VOAM
-Module fieldvector
-implicit none
-double precision :: x0,y0,z0
-double precision :: theta,phi
-contains
-    Function Fx(theta,phi)
-    implicit none
-    double precision :: Fx,theta,phi,x0
-    if (x0.eq.0.0d0) then
-        Fx=sin(theta)*cos(phi)
-    else
-        Fx=x0
-    end if
-    !write(*,*) "Fx",Fx,theta,phi
-    End
-!------------------------------------------------------------------------------!
-    Function Fy(theta,phi)
-    implicit none
-    double precision :: Fy,theta,phi,y0
-    if (y0.eq.0.0d0) then
-        Fy=sin(theta)*sin(phi)
-    else
-        Fy=y0
-    end if
-    !write(*,*) "Fy",Fy,theta,phi
-    End
-!------------------------------------------------------------------------------!
-    Function Fz(theta)
-    implicit none
-    double precision :: Fz,theta,z0
-    if (z0.eq.0.0d0) then
-        Fz=cos(theta)
-    else
-        Fz=z0
-    end if
-    !write(*,*) "Fz",Fz,theta
-    End
-End module fieldvector
+
+!##############################################################################!
 !==============================================================================!
 !=======================  MAIN VOAM STARTS HERE  ==============================!
 !==============================================================================!
+!##############################################################################!
+
 Program mainVOAM
 use VOAM
-use fieldvector
+!use fieldvector
 implicit none
-character*10 ET,axis_scan,approximation,stoichiometry
+character*10 ET,axis_scan,approximation,stoichiometry,mister
 character*80 file ! Name of the file
 character*100 line,title ! Characters to read the input file
-character*10 mister
 character*80, dimension(10) :: name_reactant_reactant
 character*80, dimension(10) :: name_product_product
 character*80, dimension(10) :: name_reactant_ligand
@@ -1020,12 +1284,12 @@ double precision, dimension(3,3,3) :: beta_iter
 !---- Integers for the input reading
 integer :: index_NLOP,index_scan !-- Indices  for the method line
 integer :: index_barrier,index_stoi,index_redox,index_potential !-- Indices for the thermochemistry line
-integer :: index_initial,index_modulus,index_trust,index_grid
+integer :: index_initial,index_initial_end,index_modulus,index_trust,index_grid
 integer :: index_tol
 !---- Integers for the NLOP reading
 !integer :: index_reactant_reactant,index_product_product
 !integer :: index_ligand_reactant,index_ligand_product
-integer :: n,m
+integer :: n,m,step
 !---- Integers for Guillem
 integer :: index_Guillem
 !---- Other
@@ -1045,11 +1309,13 @@ open (2,file=TRIM(file),status="old")
     Guillem(1)=print_NLOP_react;Guillem(2)=print_NLOP_prod
     Guillem(3)=print_NLOP_lig;  Guillem(4)=print_coeffs;
     Guillem(5)=print_EQ;        Guillem(6)=print_sols; 
-    Guillem(7)=print_checks;    !Guillem(8)=
-    !Guillem(9)=                !Guillem(10)=
+    Guillem(7)=print_checks;    Guillem(8)=print_mins;
+    Guillem(9)=print_bubble;    !Guillem(10)=
 !                                                                              !
 !==============================================================================!
 
+    !-- Declaration of a character vector for the later output handling
+        axis_name(1)="Fx";axis_name(2)="Fy";axis_name(3)="Fz"    
 
 !================================KEYWORDS BLOCK================================!
 !                                                                              !
@@ -1066,7 +1332,8 @@ if(index(line,"Method:").ne.0.or.index(line,"method:").ne.0) then ! Try reading 
 
         !--- Indices for the method-related keywords
     index_scan=index(line,"scan") !-- Detecting the first coincidence for the 'scan' word to detect the scanning axis
-    index_NLOP=index(line,"NLOP") !-- Same as index_scan
+    index_NLOP=index(line,"aylor") !-- Same as index_scan
+    index_NLOP=index_NLOP+index(line,"AYLOR")
 
     index_Guillem=index(line,"Guillem")             ! It's me, hi! I'm the developer, it's me
     index_Guillem=index_Guillem+index(line,"SUDO")
@@ -1110,7 +1377,7 @@ if(index(line,"Method:").ne.0.or.index(line,"method:").ne.0) then ! Try reading 
 
         !-- Reading the order of NLOP
     if (index(line,"Taylor=").ne.0.or.index(line,"taylor=").ne.0.or.index(line,"TAYLOR=").ne.0) then
-        read(line(index_NLOP+5:index_NLOP+10),*) approximation
+        read(line(index_NLOP+6:index_NLOP+12),*) approximation
         select case(approximation)
             case ("Dipole","dipole","mu","Mu")
                 order_nlop=1
@@ -1130,7 +1397,7 @@ if(index(line,"Method:").ne.0.or.index(line,"method:").ne.0) then ! Try reading 
 
         !-- Reading the SUDO keywords
     if (index(line,"SUDO=").ne.0.or.index(line,"sudo=").ne.0) then ! Guillem is here
-        read(line(index_Guillem+5:index_Guillem+15),*) mister
+        read(line(index_Guillem+5:index_Guillem+25),*) mister
         select case (mister)
             case ("Guillem")
                 Guillem=.TRUE.
@@ -1140,7 +1407,7 @@ if(index(line,"Method:").ne.0.or.index(line,"method:").ne.0) then ! Try reading 
                 Guillem(2)=.TRUE.
             case ("Ligand","ligand","Ligands","ligands","Lig","lig","Ligs","ligs")
                 Guillem(3)=.TRUE.
-            case ("Coefficient","coefficient","coeff")
+            case ("Coefficient","coefficient","coeff","coeffs")
                 Guillem(4)=.TRUE.
             case ("Equations","equation","equations","Equation")
                 Guillem(5)=.TRUE.
@@ -1148,10 +1415,16 @@ if(index(line,"Method:").ne.0.or.index(line,"method:").ne.0) then ! Try reading 
                 Guillem(6)=.TRUE.
             case ("Check","check")
                 Guillem(7)=.TRUE.
+            case ("min_sols","Min sols","min sols","Min_sols")
+                Guillem(8)=.TRUE.
+            case ("sorting","bubble sort","bubblesort","Bubblesort","Bubble Sort")
+                Guillem(9)=.TRUE.
             case ("NLOP","nlop")
-                Guillem(1)=.TRUE.;Guillem(2)=.TRUE.;Guillem(3)=.TRUE.
-            case ("full check","Full check","fullcheck")
-                Guillem(4)=.TRUE.;Guillem(6)=.TRUE.
+                Guillem(1)=.TRUE.; Guillem(2)=.TRUE.; Guillem(3)=.TRUE.
+            case ("full check","Full check","fullcheck","All check","allcheck","all check")
+                Guillem(4)=.TRUE.; Guillem(6)=.TRUE.
+            case ("multicheck","Multicheck")
+                Guillem(8)=.TRUE.; Guillem(9)=.TRUE.
         end select
     else ! No sudo
         continue
@@ -1191,6 +1464,7 @@ if(index(line,"Thermochemistry:").ne.0.or.index(line,"thermochemistry:").ne.0) t
     end if
 
         ! -- Reading the stoichiometry of the ligand: whether it acts as a reactant, as a product or there is none involved
+            !-- CAN BE DELETED
     if(index(line,"Stoichiometry=").ne.0.or.index(line,"stoichiometry=").ne.0) then
         read(line(index_stoi+10:index_stoi+12),*) stoi
         select case(stoi)
@@ -1265,10 +1539,39 @@ if(index(line,"Computation:").ne.0.or.index(line,"computation:").ne.0) then
     index_grid=index(line,"rid") 
     !
     if(index(line,"Initial point=").ne.0.or.index(line,"initial point=").ne.0) then
-        read(line(index_initial+5:index_initial+21),*) x0,y0,z0
+            !-- Check the initial point of the scan
+        index_initial_end=index(line,")")
+        read(line(index_initial+6:index_initial_end-1),*) x0,y0,z0
         x0=x0*1.0d-4;y0=y0*1.0d-4;z0=z0*1.0d-4
+        initial_position(1)=x0;initial_position(2)=y0;initial_position(3)=z0
+    
+            !-- Check there are no "missunderstandings" in the scans, i.e. computing a 3D with a constant field
+        if(n_dim.eq.1) then
+            if(axis(gpc).eq.1.and.initial_position(gpc).ne.0.0d0) then
+                write(*,'(" Cannot perform the scan of ",A2," with a non-zero position! Stop!")') axis_name(gpc)
+                write(*,*)
+                stop
+            end if
+        end if
+        if (n_dim.eq.2) then
+            step=nint(1+abs(cos(0.5d0*PI*gpc)))
+            do i=1,3,step 
+                if (axis(gpc).eq.1.and.initial_position(i).ne.0.0d0) then
+                        !-- Axis(gpc) --> Constant axis
+                    write(*,'(" Cannot perform the 2D scan with a non-zero",A2," starting point")') axis_name(i)
+                    write(*,*)
+                    stop 
+                end if
+            end do
+        end if
+        if (n_dim.eq.3.and.all(initial_position.ne.0.0d0)) then
+            write(*,*) "The 3D scan cannot be performed with a non-zero initial position! Stop!"
+            write(*,*)
+            stop
+        end if
     else
         write(*,*) "Bad input of initial point! STOP!"
+        write(*,*)
         stop 
     end if
     !
@@ -1281,8 +1584,6 @@ if(index(line,"Computation:").ne.0.or.index(line,"computation:").ne.0) then
     !
     if(index(line,"Grid=").ne.0.or.index(line,"grid=").ne.0) then
         read(line(index_grid+4:index_grid+8),*) grid
-        if(grid.ge.1E3) write(*,*) "Warning: grid too dense for 3D"
-        if(grid.le.1E2) write(*,*) "Warning: grid too thin for scanning"
     else
         write(*,*) "Bad input of grid! STOP!"
         stop
@@ -1313,12 +1614,6 @@ else
     tol=1E-4
 end if
 
-!-- Defining the electric fields vectors in spherical polar coordinates for the following scan
-!-----------------------------------------------------------------------------!
-        F(1)=Fx(theta,phi);F(2)=Fy(theta,phi);F(3)=Fz(theta)
-        axis_name(1)="Fx";axis_name(2)="Fy";axis_name(3)="Fz"    
-!-----------------------------------------------------------------------------!
-
 !==============================================================================!
             !-----------------Echoing the input-----------------!
 !==============================================================================!
@@ -1328,7 +1623,9 @@ write(*,*)
 write(*,*) "            The input for this run is:"
 write(*,'(" Central point ((x,y,z)·10^-4 a.u)",xF8.3,xF8.3,xF8.3)') x0,y0,z0
 write(*,'(" Maximum radius of ",F7.5," a.u for the iterative resolutions")') radius
-write(*,'(" Number of points ",I5," (1D) ",I10," (2D) ",I15," (3D) ")') grid,grid**2,grid**3
+write(*,'(" Number of points computed: 0 (1D) ",I9," (2D) ",I10," (3D) ")') ,nint(PI*(radius**2-initial_position(gpc)**2)*1.0d8),nint(4.0d0*PI*radius**2*1.0d8)
+if(grid.ge.1E+3) write(*,*) "       Warning! Grid too dense for scanning"
+if(grid.le.1E+2) write(*,*) "       Warning! Grid too  thin for scanning"
 if (redox_potential.ne.0.0) then
     write(*,'(" Potential (a.u)",xF8.3)') redox_potential
 end if
@@ -1678,7 +1975,7 @@ do i=1,3
     do j=1,3
         alpha(i,j)=alpha_p(i,j)-alpha_r(i,j)+alpha_lig_p(i,j)-alpha_lig_r(i,j)
         do k=1,3
-            beta(i,j,k)=beta_p(i,j,k)-beta_r(i,j,k)+beta_lig_p(i,j,k)-beta_lig_r(i,j,k)
+            beta(i,j,k)=-(beta_p(i,j,k)-beta_r(i,j,k)+beta_lig_p(i,j,k)-beta_lig_r(i,j,k))
         end do
     end do
 end do
@@ -1687,10 +1984,6 @@ end do
 write(*,*)
 write(*,*) "=============================================================================="
 write(*,'("     Title of the job: ",xA80)') title
-write(*,*) "------------------------------------------------------------------------------"
-write(*,*)
-!write(*,'(" Reaction studied",xA18,"+",xI2,"*",xA9,"--->",xA18)') name_reactant,-1*stoi,name_ligand,name_product
-!write(*,*)
 write(*,*) "------------------------------------------------------------------------------"
 write(*,*)
 write(*,'(" Target barrier for the study:",xF6.2," kcal/mol")') target_barrier
@@ -1728,34 +2021,32 @@ write(*,*) "            Please check everything is correct before running."
 write(*,'(" If you wish to make any change at the input file",A20,",")') trim(file)
 write(*,*) "                        please press Ctrl+C"
 write(*,*) 
-!call sleep(3)
 !--- S'ha de fer un if segons el n_dim
 write(*,'("     Searching the ",A2,x"minimum field strength for the input-imposed conditions")') axis_name(gpc)
 write(*,*) "                           Please wait..."
 !--- S'ha de fer un if segons el n_dim
 write(*,*) 
 write(*,*)
-write(*,*) "======================================================================================================================"
-stop
+write(*,*) "===================================================================================================================================================================================="
 !=============================================================================!
 !----------------------------VOAM STARTS HERE---------------------------------!
 !=============================================================================!
 if (n_dim.eq.1) then !-- 1D resolution is performed
-    call VOAM_1D(Guillem,F,gpc,tol,radius,axis,axis_name,order_nlop)
+    call VOAM_1D(Guillem,order_nlop,gpc,radius,axis,initial_position,axis_name,tol)
 end if
 if (n_dim.eq.2) then !-- 2D resolution is performed
-    call VOAM_2D(Guillem,gpc,radius,axis,axis_name,order_nlop,grid)  
+    call VOAM_2D(Guillem,order_nlop,gpc,radius,axis,initial_position,axis_name,grid)  
 end if
 if (n_dim.eq.3) then !-- 3D resolution is performed
-    call VOAM_3D(Guillem,F,radius,axis,axis_name,order_nlop)
+    call VOAM_3D(Guillem,order_nlop,gpc,radius,axis,initial_position,axis_name,grid)
 end if
 !=============================================================================!
 !----------------------------VOAM ENDS HERE ----------------------------------!
 !=============================================================================!
-write(*,*) "======================================================================================================================"
+write(*,*) "===================================================================================================================================================================================="
 write(*,*)
 write(*,*)
-write(*,*) " Program written by Pau Besalú and Guillem Pey* for his Master Thesis"
+write(*,*) " Program written by Dr. Pau Besalú and Guillem Pey* for his Master Thesis"
 write(*,*) "            supervised by Dr. Josep Maria Luis Luis in the"
 write(*,*) "    Master in Advanced Catalysis and Molecular Modeling (MACMoM)"
 write(*,*) "                at Universitat de Girona (UdG) on 2024" 
@@ -1828,16 +2119,15 @@ read(2,*) mu_i(1),mu_i(2),mu_i(3)
 
 if (mu_i(3).ge.0.0d0) then !and.abs(mu_i(3)).gt.tol) then
     continue
-    !if (abs(mu_i(1)).lt.tol.and.abs(mu_i(2)).lt.tol) then
-    !   mu_i(1)=0.0d0; mu_i(2)=0.0d0 
-    !else
-    !    write(*,*) "Warning! The X and Y components of the dipole moment are not neglegible!"
-    !end if
+    if (abs(mu_i(1)).lt.tol.and.abs(mu_i(2)).lt.tol) then
+        continue
+    else
+        write(*,*) "Warning! The X and Y components of the dipole moment are not neglegible!"
+    end if
 else !if (mu_i(3).lt.0.0d0.and.abs(mu_i(3)).gt.tol) then
+    write(*,*)
     write(*,*) "Warning! One of the input small molecules is not properly oriented!"
     write(*,*) "The Z component of the dipole moment should be positive."
-    write(*,*)
-    continue
 end if
 
 read(2,*) line
