@@ -1,1 +1,14 @@
-
+Keywords:
+  - Axis Scan:
+    #  1D
+    #  2D
+    #  3D: "XYZ" or "xyz"
+  - Taylor:
+  - Target barrier
+  - (Redox) Potential
+  - Redox: number of electrons gained by the system (toggled in the reactant side of the reaction)
+  - Initial point:
+  - Modulus:
+  - Grid:
+  - Numerical Tolerance (num_tol):
+  - Energy tolerance (e_tol):
