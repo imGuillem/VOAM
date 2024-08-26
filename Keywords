@@ -5,10 +5,11 @@ Keywords:
     #  3D: "XYZ" or "xyz"
   - Taylor:
   - Target barrier
-  - (Redox) Potential
+  - (Redox) Potential: reduction potential at which the redox reduction is taking place. Redox potentials vs SHE.
   - Redox: number of electrons gained by the system (toggled in the reactant side of the reaction)
   - Initial point:
   - Modulus:
+  - Field:
   - Grid:
-  - Numerical Tolerance (num_tol):
-  - Energy tolerance (e_tol):
+  - Tolerance (tol)
+  
