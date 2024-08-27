@@ -1,10 +1,10 @@
 !-- Program written by Pau Besalú and Guillem Pey* - TFM Guillem Pey
 !-- VOAM.f95 (VoltOhmAmpereMaxwell.f95) 
-!-- OpEEF searcher within the FDB_beta method using the third degree equation and polar spherical coordinates
+!-- OpEEF searcher within the FDB_beta method using the third degree equation, cylindrical and spherical spherical coordinates
 Module VOAM
 implicit none
 ! Non-linear optical properties (NLOPs) and energies
-    double precision :: E_0,E_r,E_p,E_lig_r,E_lig_p,target_barrier
+    double precision :: domain,E_0,E_r,E_p,E_lig_r,E_lig_p,target_barrier
     double precision, dimension(3) :: F,initial_position
     double precision, dimension(3) :: mu,mu_r,mu_p,mu_lig,mu_lig_r,mu_lig_p
     double precision, dimension(3,3) :: alpha,alpha_r,alpha_p,alpha_lig,alpha_lig_r,alpha_lig_p,alpha_tmp
@@ -30,82 +30,56 @@ implicit none
     character*2,dimension(3) :: axis_name
     double precision :: PI = 4.0d0*datan(1.0d0)
     double precision :: eps = cmplx(-0.5d0,dsqrt(3.0d0/4.0d0))
+    double precision :: Faraday = 9.64853321233100184d4 ! C/mol
+    double precision :: hartree2kcal = 6.2751d2
+    double precision :: G_SHE = 4.281d0 ! V
     integer i,j,k
 contains
-    !Function E_FDB(F,order_nlop)
-    !implicit none
-    !double precision :: E_FDB,Fx,Fy,Fz,theta,phi
-    !!double precision :: E_0,E_mu,E_alpha,redox_potential
-    !double precision, dimension(3) :: mu,mu_lig,F
-    !double precision, dimension(3,3) :: alpha,alpha_lig
-    !double precision, dimension(3,3,3) :: beta,beta_lig
-    !integer i,j,k,order_nlop,redox_coef,stoi
 
-    !E_FDB=E_0-abs(redox_coef)*redox_potential
-    !!-- Just in case
-    !!if (mu_lig(1).lt.0) then
-    !!    write(*,*) "WARNING! LIGAND NOT PROPERL ALIGNED! STOP!"
-    !!    stop
-    !!end if
-    !!-- Linear term
-    !do i=1,3
-    !    E_FDB=E_FDB-mu(i)*F(i)
-    !end do
-    !    !-- Adding solvent correction
-    !E_FDB=E_FDB+stoi*mu_lig(1)*sqrt(F(1)**2+F(2)**2+F(3)**2)
-    !E_mu=E_FDB
+    Subroutine VOAM_0D(axis_name,grid,radius) !-- Scanning subroutine
+    implicit none
+    character*2,dimension(3) :: axis_name
+    double precision, allocatable, dimension (:,:) :: dG_field
+    double precision :: radius,step,field,G_field,G_main,G_side
+    integer i,grid
+    
+        !-- Field scanning
+    allocate(dG_field(int(grid/10)+1,4))
+    step=(2.0d0*radius/(grid*1.0d-1))
+    E_0=E_0-abs(redox_coef)*redox_potential
+    do i=1,3
+        do j=1,(grid/10)+1
+            field=-radius+(j-1)*step
+            G_field=E_0-(mu(i)+sign(1.0d0,field)*mu_lig(3))*field-0.5d0*(alpha(i,i)+alpha_lig(3,3))*field**2-(1.0d0/6.0d0)*(beta(i,i,i)+sign(1.0d0,field)*beta_lig(3,3,3))*field**3
+                !G_side=(E_lig_p-E_lig_r)-mu_lig(3)*abs(field)-0.5d0*alpha_lig(3,3)*field**2-(1.0d0/6.0d0)*beta_lig(3,3,3)*abs(field)**3
+                !G_main=(E_p-E_r)-mu(1)*field-0.5*alpha(1,1)*field**2-(1.0d0/6.0d0)*beta(1,1,1)*field**3
+                !G_field=G_main_G_side
+            dG_field(j,1)=field;dG_field(j,i+1)=G_field*hartree2kcal
+        end do
+    end do
+    write(*,*) "        VOAM - Scan of the input file"
+    write(*,'("      F(a.u.)",XXXX"G-"A2,"(kcal/mol)",XXXX"G-"A2,"(kcal/mol)",XXXX"G-"A2,"(kcal/mol)")') axis_name(1),axis_name(2),axis_name(3)
+    do i=1,(grid/10)+1
+        write(*,'(xxF12.6,xxxxF12.6,xxxxxxxxF12.6,xxxxF12.6)') (dG_field(i,j),j=1,4)
+    end do
 
-    !!-- Quadratic term
-    !do i=1,3
-    !    do j=1,3
-    !        E_FDB=E_FDB-0.5d0*alpha_lig(i,j)*F(i)*F(j)
-    !    end do
-    !end do
-    !    !-- Adding solvent correction
-    !E_FDB=E_FDB+stoi*0.5d0*alpha_lig(1,1)*(sqrt(F(1)**2+F(2)**2+F(3)**2))**2
-    !E_alpha=E_FDB
+    deallocate(dG_field)
 
-    !!-- Cubic term
-    !do i=1,3
-    !    do j=1,3
-    !        do k=1,3
-    !            E_FDB=E_FDB+(1.0d0/6.0d0)*beta(i,j,k)*F(i)*F(j)*F(k)
-    !        end do
-    !    end do
-    !end do
-    !    !-- Adding solvent correction
-    !E_FDB=E_FDB-stoi*(1.0d0/6.0d0)*beta(1,1,1)*(sqrt(F(1)**2+F(2)**2+F(3)**2))**3
-    !!-- Choosing the approximation of the run
-    !if (order_nlop.eq.0) then
-    !    write(*,*) "WARNING: You must choose an approximation to optimise the system. STOP!"
-    !    stop
-    !else if (order_nlop.eq.1) then
-    !    E_FDB=E_mu
-    !else if (order_nlop.eq.2) then
-    !    E_FDB=E_alpha
-    !else if (order_nlop.eq.3) then
-    !    E_FDB=E_FDB
-    !else
-    !    write(*,*) "WARNING: NOT A VALID APPROXIMATION KEYWORD. STOP"
-    !    stop
-    !end if
-    !return
-    !End
-
+    End subroutine VOAM_0D
 !###################################################################################################
     !=========================================================================!
     !============================== 1D REGIME ================================!
     !=========================================================================!
 !###################################################################################################
 
-    Subroutine VOAM_1D(Guillem,order_nlop,gpc,radius,axis,initial_position,axis_name,tol)
+    Subroutine VOAM_1D(Guillem,domain,order_nlop,gpc,radius,axis,initial_position,axis_name,tol)
     implicit none
     logical,dimension(10) :: Guillem
     double precision, dimension (3) :: F,initial_position
     character*2,dimension(3) :: axis_name
     integer, dimension(3) :: axis
     double precision :: tmp_energy,tmp_mu,tmp_alpha
-    double precision :: radius
+    double precision :: radius,domain
     integer step,gpc,order_nlop
         !---Specific parameters for the 3rd degree solver---!
     integer i,n,sign_eenergy,sign_aalpha
@@ -116,14 +90,13 @@ contains
     double precision :: root_1,root_2,root_3,half_root1,half_root2,min_root
     double precision :: omega,angle,pp,qq,markk,markkk
 
-    !--         Reference of the 3rd degree solution:
-    !-- http://olewitthansen.dk/Mathematics/The_cubic_equation.pdf
+            !--         Reference of the 3rd degree solution:
+            !-- http://olewitthansen.dk/Mathematics/The_cubic_equation.pdf
 
-        !-- Definition of the oriented NLOPs 
-    tmp_energy=E_0-abs(redox_coef)*redox_potential-target_barrier/6.2751d2  !-- Energy
-    mu(gpc)=mu(gpc)+mu_lig(gpc)                                             !-- Dipole moment
-    alpha(gpc,gpc)=alpha(gpc,gpc)+alpha_lig(gpc,gpc)                        !-- Polarizability matrix
-    beta(gpc,gpc,gpc)=beta(gpc,gpc,gpc)+beta_lig(gpc,gpc,gpc)               !-- Hyperpolarizability tensor
+    tmp_energy=E_0-abs(redox_coef)*redox_potential-target_barrier/hartree2kcal      !-- Energy
+    mu(gpc)=mu(gpc)+domain*mu_lig(3)                                                !-- Dipole moment
+    alpha(gpc,gpc)=alpha(gpc,gpc)+alpha_lig(3,3)                                    !-- Polarizability matrix
+    beta(gpc,gpc,gpc)=beta(gpc,gpc,gpc)+domain*beta_lig(3,3,3)                      !-- Hyperpolarizability tensor
     
         !-- Initialization of the iterable NLOPs
     tmp_mu=mu(gpc);tmp_alpha=0.5d0*alpha(gpc,gpc)                           !-- Tmp values for variations in case of constant fields
@@ -591,7 +564,7 @@ contains
         !-- Falta trobar com F(GPC) es relaciona amb initial_position()
             !-- axis_scan=XY --> (upper,lower)==(2,1);  axis_scan=XZ --> (upper,lower)==(1,3);  axis_scan=YZ --> (upper,lower)==(2,3)
         mu(upper)=mu(upper)+mu_lig(3);mu(lower)=mu(lower)+mu_lig(3)
-        E_FF=E_0-abs(redox_coef)*redox_potential-(target_barrier/6.2751d2)-mu(gpc)*F(gpc)
+        E_FF=E_0-abs(redox_coef)*redox_potential-(target_barrier/hartree2kcal)-mu(gpc)*F(gpc)
         if (Guillem(5).eqv..TRUE.) then
             write(*,'(" (μ-FDB-(",A2,",",A2,")) Equation to solve: 0 = ",F12.6," +",xF12.6,xA2," +",xF12.6,xA2)') &
             & axis_name(upper),axis_name(lower),E_FF,mu(upper),axis_name(upper),mu(lower),axis_name(lower)
@@ -616,7 +589,7 @@ contains
         step=nint(1+abs(cos(0.5d0*PI*gpc)))
 
             !-- Initialization of the tmp_NLOP values
-        tmp_energy=E_0-abs(redox_coef)*redox_potential-target_barrier/6.2751d2     !-- Energy associated to thermochemistry
+        tmp_energy=E_0-abs(redox_coef)*redox_potential-target_barrier/hartree2kcal     !-- Energy associated to thermochemistry
 
         do i=1,grid
             tmp_mu=0.0d0; tmp_alpha=0.0d0; tmp_root=0.0d0
@@ -786,12 +759,18 @@ contains
         end if
 
             !-- Print of the absolute minimum solution
-        write(*,*)
-        write(*,'(" (α-FDB-",A2,A2,") - The minimum solution in cylindrical cooridnates: (ρ,φ;",A2,")   = (",xF13.10,",",xF6.4,",",xF6.4,") (*10^-4) a.u ")') &
-        & axis_name(2-axis(1)),axis_name(2+axis(3)),axis_name(gpc),sort(1,1)*1.0d4,sort(1,2),F(gpc)*1.0d4
-        write(*,'(" (α-FDB-",A2,A2,") - The minimum solution in Cartesian cooridnates:   (",A2,",",A2,";",A2,") = (",F12.6,",",F12.6,",",F12.6,") (*10^-4) a.u ")') &
-        & axis_name(2-axis(1)),axis_name(2+axis(3)),axis_name(2-axis(1)),axis_name(2+axis(3)),axis_name(gpc),sort(1,1)*dcos(sort(1,2))*1.0d4,sort(1,1)*dsin(sort(1,2))*1.0d4,F(gpc)*1.0d4
-        write(*,*)
+        if (dimsort.ne.0) then
+            write(*,*)
+            write(*,'(" (α-FDB-",A2,A2,") - The minimum solution in cylindrical cooridnates: (ρ,φ;",A2,")   = (",xF13.10,",",xF6.4,",",xF6.4,") (*10^-4) a.u ")') &
+            & axis_name(2-axis(1)),axis_name(2+axis(3)),axis_name(gpc),sort(1,1)*1.0d4,sort(1,2),F(gpc)*1.0d4
+            write(*,'(" (α-FDB-",A2,A2,") - The minimum solution in Cartesian cooridnates:   (",A2,",",A2,";",A2,") = (",F12.6,",",F12.6,",",F12.6,") (*10^-4) a.u ")') &
+            & axis_name(2-axis(1)),axis_name(2+axis(3)),axis_name(2-axis(1)),axis_name(2+axis(3)),axis_name(gpc),sort(1,1)*dcos(sort(1,2))*1.0d4,sort(1,1)*dsin(sort(1,2))*1.0d4,F(gpc)*1.0d4
+            write(*,*)
+        else
+            write(*,'(" (α-FDB-",A2,A2,") - No solution within the maximum radius was found. Consider using a lower approximation. ")') axis_name(2-axis(1)),axis_name(2+axis(3))
+            write(*,*)
+        end if
+        deallocate(sort)
         
     end if
 
@@ -808,7 +787,7 @@ contains
         step=nint(1+abs(cos(0.5d0*PI*gpc)))
 
             !-- Initialization of the tmp_NLOP values
-        tmp_energy=E_0-abs(redox_coef)*redox_potential-target_barrier/6.2751d2 !-- Energy associated to thermochemistry
+        tmp_energy=E_0-abs(redox_coef)*redox_potential-target_barrier/hartree2kcal !-- Energy associated to thermochemistry
 
         do i=1,grid
             tmp_mu=0.0d0; tmp_alpha=0.0d0; tmp_beta=0.0d0; tmp_root=0.0d0
@@ -914,9 +893,9 @@ contains
                     !-- Print the specific raw solutions
                 if (Guillem(6).eqv..TRUE.) then
                     write(*,'(" Phi=    ",xF6.4)') phi
-                    write(*,'(" (β-FDB-FxFy) - First specific solution: ",xF18.6)') tmp_root(1)
-                    write(*,'(" (β-FDB-FxFy) - Second specific solution:",xF18.6)') tmp_root(2)
-                    write(*,'(" (β-FDB-FxFy) - Third specific solution: ",xF18.6)') tmp_root(3)
+                    write(*,'(" (β-FDB-",A2,A2,") - First specific solution: ",xF18.6)') axis_name(2-axis(1)),axis_name(2+axis(3)),tmp_root(1)
+                    write(*,'(" (β-FDB-",A2,A2,") - Second specific solution:",xF18.6)') axis_name(2-axis(2)),axis_name(2+axis(3)),tmp_root(2)
+                    write(*,'(" (β-FDB-",A2,A2,") - Third specific solution: ",xF18.6)') axis_name(2-axis(3)),axis_name(2+axis(3)),tmp_root(3)
                     write(*,*)
                 end if
                     
@@ -986,12 +965,18 @@ contains
         end if
 
             !-- Print of the absolute minimum solution
-        write(*,*)
-        write(*,'(" (β-FDB-",A2,A2,") - The minimum solution in cylindrical cooridnates: (ρ,φ;",A2,")   = (",xF12.10,",",xF6.4,",",xF6.4,") (*10^-4) a.u ")') &
-        & axis_name(2-axis(1)),axis_name(2+axis(3)),axis_name(gpc),sort(1,1)*1.0d4,sort(1,2),F(gpc)*1.0d4
-        write(*,'(" (β-FDB-",A2,A2,") - The minimum solution in Cartesian cooridnates:   (",A2,",",A2,";",A2,") = (",F12.6,",",F12.6,",",F12.6,") (*10^-4) a.u ")') &
-        & axis_name(2-axis(1)),axis_name(2+axis(3)),axis_name(2-axis(1)),axis_name(2+axis(3)),axis_name(gpc),sort(1,1)*dcos(sort(1,2))*1.0d4,sort(1,1)*dsin(sort(1,2))*1.0d4,F(gpc)*1.0d4
-        write(*,*)
+        if (dimsort.ne.0) then
+            write(*,*)
+            write(*,'(" (β-FDB-",A2,A2,") - The minimum solution in cylindrical cooridnates: (ρ,φ;",A2,")   = (",xF12.10,",",xF6.4,",",xF6.4,") (*10^-4) a.u ")') &
+            & axis_name(2-axis(1)),axis_name(2+axis(3)),axis_name(gpc),sort(1,1)*1.0d4,sort(1,2),F(gpc)*1.0d4
+            write(*,'(" (β-FDB-",A2,A2,") - The minimum solution in Cartesian cooridnates:   (",A2,",",A2,";",A2,") = (",F12.6,",",F12.6,",",F12.6,") (*10^-4) a.u ")') &
+            & axis_name(2-axis(1)),axis_name(2+axis(3)),axis_name(2-axis(1)),axis_name(2+axis(3)),axis_name(gpc),sort(1,1)*dcos(sort(1,2))*1.0d4,sort(1,1)*dsin(sort(1,2))*1.0d4,F(gpc)*1.0d4
+            write(*,*)
+        else
+            write(*,'(" (β-FDB-",A2,A2,") - No solution within the maximum radius was found. Consider using a lower approximation. ")') axis_name(2-axis(1)),axis_name(2+axis(3))
+            write(*,*)
+        end if
+        deallocate(sort)
 
     end if
     
@@ -1035,7 +1020,7 @@ contains
 
     if (order_nlop.eq.1) then
         mu=mu+mu_lig(3)
-        E_FF=E_0-abs(redox_coef)*redox_potential-(target_barrier/6.2751d2)
+        E_FF=E_0-abs(redox_coef)*redox_potential-(target_barrier/hartree2kcal)
         if (Guillem(5).eqv..TRUE.) then
             write(*,'(" (μ-FDB-XYZ) - The equation to be solved is: 0 =",xF7.3," +",xF7.3,xA2," +",xF7.3,xA2," +",xF7.3,xA2)') &
             & E_FF,mu(1),axis_name(1),mu(2),axis_name(2),mu(3),axis_name(3)
@@ -1055,7 +1040,8 @@ contains
                 write(*,'(" (μ-FDB-XYZ) - Specific solution is (",A2",",A2,",",A2,") = (",F18.12,F18.12,F18.12,") a.u")') axis_name(1),axis_name(2),axis_name(3),F(1),F(2),F(3)
                 write(*,*)
             end if
-            write(*,*) "The modulus of the vector is larger than the maximumi input radius"
+            write(*,'(" (μ-FDB-XYZ) - The modulus of the vector is larger than the maximum input radius.")')
+            write(*,'(" (μ-FDB-XYZ) - Consider using a larger radius or check the input file for any mistakes.")')
             write(*,*)
         end if
 
@@ -1071,14 +1057,22 @@ contains
     if (order_nlop.eq.2) then
         
             !-- Initialization of the tmp_NLOP values
-        tmp_energy=E_0-abs(redox_coef)*redox_potential-target_barrier/6.2751d2 !-- Energy associated to thermochemistry
+        tmp_energy=E_0-abs(redox_coef)*redox_potential-target_barrier/hartree2kcal !-- Energy associated to thermochemistry
+        do i=1,3
+            mu(i)=mu(i)+mu_lig(3)
+            do j=1,3
+                alpha(i,j)=alpha(i,j)+alpha_lig(i,j)
+            end do
+        end do
         
-        do i=1,grid         !-- Loop for theta == π/{grid}
-            do j=1,2*grid   !-- Loop for phi  == 2π/{2*grid}
+        do i=1,grid         !-- Loop for \theta  == π/{grid}
+            do j=1,2*grid   !-- Loop for \varphi == 2π/{2*grid}
+    
+                    !-- Initialization of the tmp_NLOP values
                 tmp_mu=0.0d0;tmp_alpha=0.0d0
 
                     !-- Declaration of the scanning angles: 0.le.φ.le.2π && 0.le.θ.le.π
-                theta=((i-1)/(1.0d0*grid-1))*PI; phi=((i-1)/(2.0d0*grid-i))*2.0d0*PI
+                theta=((i-1)/(1.0d0*grid-1))*PI; phi=((j-1)/(2.0d0*grid-1))*2.0d0*PI
 
                     !-- Declaration of the field vectors
                 F(1)=dsin(theta)*dcos(phi);F(2)=dsin(theta)*dsin(phi);F(3)=dcos(theta)
@@ -1180,10 +1174,10 @@ contains
 
                 end if
                 
-                    !-- Print all min_root's in both cylindrical and Cartesian coordinates
+                    !-- Print all min_root's in both spherical and Cartesian coordinates
                 if (Guillem(8).eqv..TRUE.) then
-                    write(*,'(" (α-FDB-XYZ) - Cylindrical solutions (R,θ,φ)  = (",xF12.10,",",xF6.4,",",xF6.4,") a.u ")') min_root,theta,phi
-                    write(*,'(" (α-FDB-XYZ) - Cartesian solutions (",A2,",",A2,",",A2,") = (",F12.6,",",F12.6,",",F12.6,") a.u ")') axis_name(1),axis_name(2),axis_name(3),min_root*F(1),min_root*F(2),min_root*F(3)
+                    write(*,'(" (α-FDB-XYZ) - Polar spherical solutions (R,θ,φ)  = (",xF12.10,",",xF6.4,",",xF6.4,") a.u ")') min_root,theta,phi
+                    write(*,'(" (α-FDB-XYZ) - Cartesian solutions (Fx,Fy,Fz) = (",F12.6,",",F12.6,",",F12.6,") a.u ")') min_root*F(1),min_root*F(2),min_root*F(3)
                     write(*,*)
                 end if
 
@@ -1235,12 +1229,18 @@ contains
         end if
 
             !-- Print of the absolute minimum solution
-        write(*,*)
-        write(*,'(" (α-FDB-XYZ) - The minimum solution in polar spherical cooridnates: (R,θ,φ)    = (",xF12.10,",",xF6.4,",",xF6.4,") (*10^-4) a.u ")') &
-        & sort(1,1)*1.0d4,sort(1,2),sort(1,3)
-        write(*,'(" (α-FDB-XYZ) - The minimum solution in Cartesian cooridnates:       (",A2,",",A2,",",A2,") = (",F12.6,",",F12.6,",",F12.6,") (*10^-4) a.u ")') &
-        & axis_name(1),axis_name(2),axis_name(3),sort(1,1)*dsin(sort(1,2))*dcos(sort(1,3))*1.0d4,sort(1,1)*dsin(sort(1,2))*dsin(sort(1,3))*1.0d4,sort(1,1)*dcos(sort(1,2))*1.0d4
-        write(*,*)
+        if (dimsort.ne.0) then
+            write(*,*)
+            write(*,'(" (α-FDB-XYZ) - The minimum solution in polar spherical cooridnates: (R,θ,φ)    = (",xF12.10,",",xF6.4,",",xF6.4,") (*10^-4) a.u ")') &
+            & sort(1,1)*1.0d4,sort(1,2),sort(1,3)
+            write(*,'(" (α-FDB-XYZ) - The minimum solution in Cartesian cooridnates: (Fx,Fy,Fz) = (",F12.6,",",F12.6,",",F12.6,") (*10^-4) a.u ")') &
+            & sort(1,1)*dsin(sort(1,2))*dcos(sort(1,3))*1.0d4,sort(1,1)*dsin(sort(1,2))*dsin(sort(1,3))*1.0d4,sort(1,1)*dcos(sort(1,2))*1.0d4
+            write(*,*)
+        else
+            write(*,'(" (α-FDB-XYZ) - No solution within the maximum radius was found. Consider using a lower approximation. ")') 
+            write(*,*)
+        end if
+        deallocate(sort)
 
     end if
 
@@ -1252,6 +1252,299 @@ contains
 !================================= β-VOAM-3D ==========================================    
 
     if (order_nlop.eq.3) then
+    
+            !-- Initialization of the tmp_NLOP values
+        tmp_energy=E_0-abs(redox_coef)*redox_potential-target_barrier/hartree2kcal !-- Energy associated to thermochemistry
+        do i=1,3
+            mu(i)=mu(i)+mu_lig(3)
+            do j=1,3
+                alpha(i,j)=alpha(i,j)+alpha_lig(i,j)
+                do k=1,3
+                    beta(i,j,k)=beta(i,j,k)+beta_lig(i,j,k)
+                end do
+            end do
+        end do
+
+        do i=1,grid         !-- Loop for \theta  == π/{grid}
+            do j=1,2*grid   !-- Loop for \varphi == 2π/{2*grid}
+
+                    !-- Declaration of the scanning angles: 0.le.φ.le.2π && 0.le.θ.le.π
+                theta=((i-1)/(1.0d0*grid-1))*PI; phi=((j-1)/(2.0d0*grid-1))*2.0d0*PI
+
+                    !-- Declaration of the field vectors:
+                F(1)=dsin(theta)*dcos(phi); F(2)=dsin(theta)*dsin(phi); F(3)=dcos(theta)
+
+                    !-- Initialization of the tmp_NLOP values
+                tmp_mu=0.0d0; tmp_alpha=0.0d0; tmp_beta=3.0d0*beta(1,2,3)*F(1)*F(2)*F(3)
+                    
+                    !-- Computation of the angular NLOP
+                do k=1,3
+                        !-- Angular dipole moment coefficient
+                    tmp_mu=tmp_mu+mu(k)*F(k)
+
+                        !-- Angular polarizability coefficient
+                    tmp_alpha=tmp_alpha+alpha(k,k)*F(k)**2+alpha(nint(1+0.2d0*k),nint(2+k/3.0d0))*F(nint(1+0.2d0*k))*F(nint(2+k/3.0d0))
+
+                        !-- Angular hyperpolarizability coefficient - Part 1
+                    tmp_beta=tmp_beta+beta(k,k,k)*F(k)**3+3.0d0*beta(1,k,3)*F(1)*F(k)*F(3)
+                end do
+                do k=1,2
+                        !-- Angular hyperpolarizability coefficient - Part 2
+                    tmp_beta=tmp_beta+3.0d0*(beta(k,k,k+1)*F(k)+beta(k,k+1,k+1)*F(k+1))*F(k)*F(k+1)
+                end do
+                !write(*,*) tmp_energy*hartree2kcal,tmp_mu,tmp_alpha,tmp_beta
+                !stop
+                eenergy=cmplx(tmp_energy,0.0d0)
+                mmu=-cmplx(tmp_mu,0.0d0)
+                aalpha=-0.5d0*cmplx(tmp_alpha,0.0d0)
+                bbeta=-(1.0d0/6.0d0)*cmplx(tmp_beta,0.0d0)
+
+                    !-- Computation of the specific parameters for the third degree solution
+                p=(3.0d0*bbeta*mmu-aalpha**2)/3.0d0/bbeta**2
+                q=(2.0d0*aalpha**3-9.0d0*bbeta*aalpha*mmu+27.0d0*eenergy*bbeta**2)/27.0d0/bbeta**3
+                omega=real(0.25d0*q**2+(1.0d0/27.0d0)*p**3)
+                if (Guillem(4).eqv..TRUE.) then
+                    write(*,'(" Theta=    ",xF6.4," Phi=    ",xF6.4)') theta,phi
+                    write(*,'(" Energy coefficient:             ",xF18.12)') real(eenergy)
+                    write(*,'(" Dipole moment coefficient:      ",xF18.12)') real(mmu)
+                    write(*,'(" Polarizability coefficient:     ",xF18.12)') real(aalpha)
+                    write(*,'(" Hyperpolarizability coefficient:",xF18.12)') real(bbeta)
+                    write(*,'(" P=",xF18.12,", Q=",xF18.12," and ω=",xF18.12)') real(p),real(q),omega
+                    write(*,*)
+                end if
+
+                    !##################################################################!
+                    !              Computing the third degree solutions                !
+                    !##################################################################!
+
+                if (abs(bbeta).lt.tol) then !angular-bbbeta is neglegible
+
+                    if (abs(mmu).lt.tol) then ! angular-mmu and -beta are neglegible --> ax**2+-b=0
+                        sign_aalpha=sign(1.0d0,real(aalpha));sign_eenergy=sign(1.0d0,real(eenergy))
+
+                        if(sign_aalpha.eq.sign_eenergy) then
+                                ! The sign is the same ---> ax**2+b=0 ---> The solution is proven to be complex. Skipped
+                            if(Guillem(6).eqv..TRUE.) then ! Print the specificsolutions
+                                    !-- Coded in this way so it is not stored in memory and is computed on-the-fly
+                                write(*,'(" (β-FDB-XYZ) - Positive complex root:",xF12.6," +i",xF12.6," a.u")') +1.0d0*sqrt(-eenergy/aalpha)
+                                write(*,'(" (β-FDB-XYZ) - Negative complex root:",xF12.6," +i",xF12.6," a.u")') -1.0d0*sqrt(-eenergy/aalpha)
+                                write(*,*)
+                            end if
+                            continue
+                        else
+                                    !    ax**2-b=0 ---> The solution is proven to be real.
+                                !    Double signed root == tmp_root(i)=positive_root  tmp_root(i+1)=negative_root
+                            tmp_root(1)=+1.0d0*dsqrt(-real(eenergy)/real(aalpha)); tmp_root(2)=-tmp_root(1)
+                            if (Guillem(6).eqv..TRUE.) then !-- Print the specific solutions
+                                write(*,'(" (β-FDB-XYZ) - Neglegible dipole moment positive root:",xF18.6," a.u")') tmp_root(1)
+                                write(*,'(" (β-FDB-XYZ) - Neglegible dipole moment negative root:",xF18.6," a.u")') tmp_root(2)
+                                write(*,*)
+                            end if
+
+                                !-- Check whether the solution is inside the maximum scanning radius
+                            min_root=abs(tmp_root(1))
+                            if (min_root.le.radius) then
+                                root(i,1)=min_root; root(i,2)=theta; root(i,3)=phi
+                            end if
+                        end if
+
+                    else if (abs(aalpha).lt.tol) then ! angular-aalpha and -bbeta are neglegible --> ax**1+b=0
+                        tmp_root(1)=-real(eenergy)/real(mmu)
+
+                        if (Guillem(6).eqv..TRUE.) then !-- Print the specific solutions
+                            write(*,'(" (β-FDB-XYZ) - Neglegible alpha root:",xF12.6," a.u")') tmp_root(1)
+                        end if
+                            
+                            !-- Check whether the solution is inside the maximum scanning radius
+                        min_root=abs(tmp_root(1))
+                        if (min_root.le.radius) then
+                            root(i,1)=min_root; root(i,2)=theta; root(i,3)=phi
+                        end if
+
+                    else ! complete second degree equation
+                        discriminant=mmu**2.0d0-4.0d0*aalpha*eenergy
+
+                        if (discriminant.ge.0.0d0) then
+                            tmp_root(1)=-mmu+dsqrt(discriminant)/2.0d0/aalpha
+                            tmp_root(2)=-mmu-dsqrt(discriminant)/2.0d0/aalpha
+                            if (Guillem(6).eqv..TRUE.) then !-- Print the specific solutions
+                                write(*,'(" (β-FDB-XYZ) - Discriminant of the second degree equation:",xF18.12)') discriminant
+                                write(*,'(" (β-FDB-XYZ) - Positive pure second degree root:",xF12.6," a.u")') tmp_root(1)
+                                write(*,'(" (β-FDB-XYZ) - Negative pure second degree root:",xF12.6," a.u")') tmp_root(2)
+                                write(*,*)
+                            end if
+
+                                !-- Get the closest-to-zero solution; tmp_root(1) and tmp_root(2) are not necessary equal; only when the discriminant is zero
+                            min_root=abs(tmp_root(1))
+                            if (abs(tmp_root(2)).lt.min_root) min_root=abs(tmp_root(2))
+
+                                !-- Check whether the solution is inside the maximum scanning radius
+                            if (min_root.le.radius) then
+                                root(i,1)=min_root; root(i,2)=theta; root(i,3)=phi
+                            end if
+
+                        else ! complex solutions
+                            if (Guillem(6).eqv..TRUE.) then
+                                    !-- They are computed as such so they are not stored in memory and only affect the time because of the printing
+                                write(*,'(" (β-FDB-XYZ) - Discriminant of the second degree equation:",xF18.12)') discriminant
+                                write(*,'(" (β-FDB-XYZ) - Positive pure complex second degree root:",xF12.6," +i",xF12.6," a.u")') -mmu+sqrt(mmu**2-4.0d0*aalpha*eenergy)/2.0d0/aalpha
+                                write(*,'(" (β-FDB-XYZ) - Negative pure complex second degree root:",xF12.6," +i",xF12.6," a.u")') -mmu-sqrt(mmu**2-4.0d0*aalpha*eenergy)/2.0d0/aalpha
+                                write(*,*)
+                            end if
+                            continue
+                        end if
+
+                    end if
+                    
+                        !-- Print all min_root's in both spherical and Cartesian coordinates
+                    if (Guillem(8).eqv..TRUE.) then
+                        write(*,'(" (β-FDB-XYZ) - Polar spherical solutions (R,θ,φ)  = (",xF12.10,",",xF6.4,",",xF6.4,") a.u ")') min_root,theta,phi
+                        write(*,'(" (β-FDB-XYZ) - Cartesian solutions (Fx,Fy,Fz) = (",F12.6,",",F12.6,",",F12.6,") a.u ")') min_root*F(1),min_root*F(2),min_root*F(3)
+                        write(*,*)
+                    end if
+
+                else !-- Angular-bbeta is not neglegible
+                    if (omega.gt.tol) then ! ω > 0 --> There is a single real root
+                        tmp_root(1)=sign(abs(-0.5d0*q-sqrt(0.25d0*q**2+p**3/27.0d0))**(1.0d0/3.0d0),real(-0.5d0*q-sqrt(0.25d0*q**2+p**3/27.0d0)))
+                        tmp_root(1)=tmp_root(1)+sign(abs(-0.5d0*q+sqrt(0.25d0*q**2+p**3/27.0d0))**(1.0d0/3.0d0),real(-0.5d0*q+sqrt(0.25d0*q**2+p**3/27.0d0)))
+                        tmp_root(1)=tmp_root(1)-aalpha/3.0d0/bbeta
+                     
+                            !-- Print the specific raw solutions
+                        if (Guillem(6).eqv..TRUE.) then
+                            write(*,'(" Theta=    ",xF6.4," Phi=    ",xF6.4)') theta,phi
+                            write(*,'(" (β-FDB-XYZ) - Unique specific solution:",xF18.6)') tmp_root(1)
+                            write(*,*) "Complex solutions skipped."
+                            write(*,*)
+                        end if
+
+                            !-- Checking whether the solution is inside the radius of the sphere
+                        min_root=abs(tmp_root(1))
+                        if (min_root.le.radius) then
+                            root(i,1)=min_root; root(i,2)=theta; root(i,3)=phi
+                        end if
+
+                    else if (abs(omega).lt.tol) then ! ω = 0 --> Three real solutions, two of them equal 
+                        tmp_root(1)=+2.0d0*sign(abs(-0.5d0*q)**(1.0d0/3.0d0),real(-0.5d0*q))-aalpha/3.0d0/bbeta
+                        tmp_root(2)=-0.5d0*tmp_root(1); tmp_root(3)=tmp_root(2)
+                        !tmp_root(2)=-1.0d0*sign(abs(-0.5d0*q)**(1.0d0/3.0d0),real(-0.5d0*q))-aalpha/3.0d0/bbeta
+
+                            !-- Print the specific raw solutions
+                        if (Guillem(6).eqv..TRUE.) then
+                            write(*,'(" Theta=    ",xF6.4," Phi=    ")') theta,phi
+                            write(*,'(" (β-FDB-XYZ) - First specific solution: ",xF18.6)') tmp_root(1)
+                            write(*,'(" (β-FDB-XYZ) - Second specific solution:",xF18.6)') tmp_root(2) 
+                            write(*,'(" (β-FDB-XYZ) - Third specific solution: ",xF18.6)') tmp_root(3)
+                            write(*,*)
+                        end if
+
+                            !-- Get the closest-to-zero solution
+                        min_root=tmp_root(1)
+                        if (abs(tmp_root(2)).lt.abs(min_root)) min_root=abs(tmp_root(2))
+
+                            !-- Checking whether the solutions are inside the sphere
+                        if (min_root.le.radius) then
+                            root(i,1)=min_root; root(i,2)=theta; root(i,3)=phi
+                        end if
+
+                    else if (omega.lt.0.0d0) then ! ω < 0 --> Three different real solutions
+                        angle=dacos(-0.5d0*real(q)/sqrt(-1.0d0*real(p)**3/27.0d0))
+                        tmp_root(1)=2.0d0*sqrt(-p/3.0d0)*cos(angle/3.0d0)           
+                        tmp_root(2)=2.0d0*sqrt(-p/3.0d0)*cos((angle+2.0d0*PI)/3.0d0)
+                        tmp_root(3)=2.0d0*sqrt(-p/3.0d0)*cos((angle+4.0d0*PI)/3.0d0)
+
+                            !-- Print the specific raw solutions
+                        if (Guillem(6).eqv..TRUE.) then
+                            write(*,'(" Theta=    ",xF6.4," Phi=    ",xF6.4)') phi
+                            write(*,'(" (β-FDB-XYZ) - First specific solution: ",xF18.6)') tmp_root(1)
+                            write(*,'(" (β-FDB-XYZ) - Second specific solution:",xF18.6)') tmp_root(2)
+                            write(*,'(" (β-FDB-XYZ) - Third specific solution: ",xF18.6)') tmp_root(3)
+                            write(*,*)
+                        end if
+                            
+                            !-- Get the closest-to-zero solution
+                        min_root=tmp_root(1)
+                        do k=2,3
+                            if (abs(tmp_root(k)).le.abs(min_root)) min_root=abs(tmp_root(k))
+                        end do
+                        
+                            !-- Check whether there are solutions inside the scanning sphere or not
+                        if (min_root.le.radius) then
+                            root(i,1)=min_root; root(i,2)=theta; root(i,3)=phi
+                        end if 
+
+                    end if
+                        
+                        !-- Print the minimum solutions, though they might not be inside the solving sphere
+                    if (Guillem(8).eqv..TRUE.) then
+                        write(*,'(" (β-FDB-XYZ) - Polar spherical solutions (R,θ,φ) = (",xF13.10,",",xF6.4,",",xF10.6,") a.u ")') min_root,theta,phi
+                        write(*,'(" (β-FDB-XYZ) - Cartesian solutions (Fx,Fy,Fz) = (",F18.12,",",F18.12,",",F18.12,") a.u ")') &
+                        & min_root*F(1),min_root*F(2),min_root*F(3)
+                        write(*,*)
+                    end if
+
+                    tmp_mu=0.0d0; tmp_alpha=0.0d0; tmp_beta=0.0d0
+                end if
+            end do
+        end do
+
+        !#################################################################################!
+        !                  Bubble Sort algorithm for matrix root(i,j)                     !
+        !#################################################################################!
+
+            !-- Get the number of solutions (dimsort)
+        dimsort=0
+        do i=1,grid
+            if (root(i,1).gt.0.0d0) then
+                dimsort=dimsort+1
+            end if 
+        end do
+        allocate(sort(dimsort,3))
+
+            !-- Pass the solutions to the sorting matrix
+        n=1
+        do i=1,grid
+            if (root(i,1).gt.0.0d0) then
+                sort(n,1)=root(i,1); sort(n,2)=root(i,2); sort(n,3)=root(i,3)
+                n=n+1
+            end if
+        end do
+
+            !-- Bubble Sort the sorting matrix
+        do i=dimsort,2,-1
+            do j=1,i-1
+                if(sort(j,1).gt.sort(j+1,1)) then
+                    tmp_sort(1)=sort(j+1,1); tmp_sort(2)=sort(j+1,2); tmp_sort(3)=sort(j+1,3)
+                    sort(j+1,1)=sort(j,1);   sort(j+1,2)=sort(j,2);   sort(j+1,3)=sort(j,3)
+                    sort(j,1)=tmp_sort(1);   sort(j,2)=tmp_sort(2);   sort(j,3)=tmp_sort(3)
+                end if
+            end do
+        end do
+
+            !-- Print the Bubble Sort matrix
+        if (Guillem(9).eqv..TRUE.) then
+            write(*,*)
+            write(*,'(" (β-FDB-XYZ) - Number of solutions:",xI2)') dimsort
+            write(*,*) "----------------------------------------------------------------------------------------------" 
+            do i=1,dimsort
+                write(*,'(" (β-FDB-XYZ) - Bubble sort matrix - Row ",I2," == (R,θ,φ) = (",xF12.10,",",xF6.4,",",xF6.4")")') i,sort(i,1),sort(i,2),sort(i,3)
+            end do
+            write(*,*) "----------------------------------------------------------------------------------------------" 
+        end if
+
+            !-- Print of the absolute minimum solution
+        if (dimsort.ne.0) then
+            write(*,*)
+            write(*,'(" (β-FDB-XYZ) - The minimum solution in polar spherical cooridnates: (R,θ,φ)    = (",xF12.10,",",xF6.4,",",xF6.4,") (*10^-4) a.u ")') &
+            & sort(1,1)*1.0d4,sort(1,2),sort(1,3)
+            write(*,'(" (β-FDB-XYZ) - The minimum solution in Cartesian cooridnates: (Fx,Fy,Fz) = (",F12.6,",",F12.6,",",F12.6,") (*10^-4) a.u ")') &
+            & sort(1,1)*dsin(sort(1,2))*dcos(sort(1,3))*1.0d4,sort(1,1)*dsin(sort(1,2))*dsin(sort(1,3))*1.0d4,sort(1,1)*dcos(sort(1,2))*1.0d4
+            write(*,*)
+        else if(dimsort.eq.0.or.sort(1,1).gt.radius) then
+            write(*,'(" (β-FDB-XYZ) - No solution within the maximum radius was found. Consider using a lower approximation. ")') 
+            write(*,*)
+        end if
+        deallocate(sort)
+
     end if
 
 !================================= β-VOAM-3D ==========================================    
@@ -1269,7 +1562,7 @@ Program mainVOAM
 use VOAM
 !use fieldvector
 implicit none
-character*10 ET,axis_scan,approximation,stoichiometry,mister
+character*10 ET,axis_scan,approximation,stoichiometry,mister,field_domain
 character*80 file ! Name of the file
 character*100 line,title ! Characters to read the input file
 character*80, dimension(10) :: name_reactant_reactant
@@ -1282,7 +1575,7 @@ double precision, dimension(3) :: mu_iter
 double precision, dimension(3,3) :: alpha_iter
 double precision, dimension(3,3,3) :: beta_iter
 !---- Integers for the input reading
-integer :: index_NLOP,index_scan !-- Indices  for the method line
+integer :: index_NLOP,index_scan,index_field !-- Indices  for the method line
 integer :: index_barrier,index_stoi,index_redox,index_potential !-- Indices for the thermochemistry line
 integer :: index_initial,index_initial_end,index_modulus,index_trust,index_grid
 integer :: index_tol
@@ -1332,6 +1625,8 @@ if(index(line,"Method:").ne.0.or.index(line,"method:").ne.0) then ! Try reading 
 
         !--- Indices for the method-related keywords
     index_scan=index(line,"scan") !-- Detecting the first coincidence for the 'scan' word to detect the scanning axis
+    index_field=index(line,"Field")             !-- Detecting whtether VOAM-1D should be solved in the positive or negative domain of fields
+    index_field=index_field+index(line,"field")
     index_NLOP=index(line,"aylor") !-- Same as index_scan
     index_NLOP=index_NLOP+index(line,"AYLOR")
 
@@ -1343,7 +1638,9 @@ if(index(line,"Method:").ne.0.or.index(line,"method:").ne.0) then ! Try reading 
     if (index(line,"Axis scan=").ne.0.or.index(line,"axis scan=").ne.0) then
         read(line(index_scan+5:index_scan+8),*) axis_scan
         select case(axis_scan)
-                !====================== 1D CASES === M.f95.swp=======================!
+            case ("Scan","scan")
+                n_dim=0
+                !====================== 1D CASES ==========================!
             case ("00X","0X0","X00","0x0","x00","00x","X","x","XXX","xxx","xx","XX")
                     !-- Solve for R but with X-oriented NLOP
                 !-- Theta is PI halves and phi is zero, unless stated in the initial point
@@ -1373,6 +1670,23 @@ if(index(line,"Method:").ne.0.or.index(line,"method:").ne.0) then ! Try reading 
     else
         write(*,*) "Bad input scan keyword! STOP!"
         stop
+    end if
+        
+        !-- Defining whether VOAM-1D works in the negative of positive domain of fields
+    if (n_dim.eq.1) then
+        if(index(line,"Field=").ne.0.or.index(line,"field=").ne.0) then
+            read(line(index_field+6:index_field+13),*) field_domain
+            select case(field_domain)
+                case ("positive","Positive","pos","Pos")
+                    domain=1.0d0
+                case ("negative","Negative","neg","Neg")
+                    domain=-1.0d0
+                case default
+                    write(*,*) "Non-defined field domain. Solving for positive fields"
+                    domain=1.0d0
+            end select    
+        end if
+        continue
     end if
 
         !-- Reading the order of NLOP
@@ -1417,7 +1731,7 @@ if(index(line,"Method:").ne.0.or.index(line,"method:").ne.0) then ! Try reading 
                 Guillem(7)=.TRUE.
             case ("min_sols","Min sols","min sols","Min_sols")
                 Guillem(8)=.TRUE.
-            case ("sorting","bubble sort","bubblesort","Bubblesort","Bubble Sort")
+            case ("sorting","bubble sort","bubblesort","Bubblesort","Bubble Sort","Bubble","bubble")
                 Guillem(9)=.TRUE.
             case ("NLOP","nlop")
                 Guillem(1)=.TRUE.; Guillem(2)=.TRUE.; Guillem(3)=.TRUE.
@@ -1463,26 +1777,6 @@ if(index(line,"Thermochemistry:").ne.0.or.index(line,"thermochemistry:").ne.0) t
         continue
     end if
 
-        ! -- Reading the stoichiometry of the ligand: whether it acts as a reactant, as a product or there is none involved
-            !-- CAN BE DELETED
-    if(index(line,"Stoichiometry=").ne.0.or.index(line,"stoichiometry=").ne.0) then
-        read(line(index_stoi+10:index_stoi+12),*) stoi
-        select case(stoi)
-        !-- Value of the stoichiometry parameter abiding to the regular thermochemistry conventions
-            case (1) ! Ligand acting as a product
-                stoi=1
-            case (0) ! Reaction without ligand
-                stoi=0
-            case (-1) ! Ligand acting as a reactant
-                stoi=-1
-            case default
-                write(*,*) "Not a valid ligand stoichiometry! STOP!"
-                stop
-        end select
-    else
-        stop
-    end if
-
         ! -- Reading whether there is an ET process, or not, and how it behaves: oxidation or reduction
     if(index(line,"Redox=").ne.0.or.index(line,"redox=").ne.0) then
         read(line(index_redox+5:index_redox+6),*) redox_coef
@@ -1508,10 +1802,10 @@ if(index(line,"Thermochemistry:").ne.0.or.index(line,"thermochemistry:").ne.0) t
                     !-- S'ha de mirar si s'ha de corregir la correcció de la fórmula
             if(redox_potential.ne.0.0) then
                     ! Potential: Converting the SHE red_potential into Gibbs energy
-                redox_potential=(-redox_potential*9.6485d4)/4184.0d0-98.6991
+                redox_potential=(-redox_potential*Faraday)/4184.0d0-98.6991
                     ! Conversion from Volts to kcal/mol
                     ! 98.6991 --> Conversion of -4.28eV to kcal/mol
-                redox_potential=redox_potential*redox_coef/6.2751d2 ! SHE red_potential into a.u adapted for the redox transoformation 
+                redox_potential=redox_potential*redox_coef/hartree2kcal ! SHE red_potential into a.u adapted for the redox transoformation 
             end if
     else
         write(*,*) "Bad input potential keyword! STOP!"
@@ -1559,6 +1853,7 @@ if(index(line,"Computation:").ne.0.or.index(line,"computation:").ne.0) then
                 if (axis(gpc).eq.1.and.initial_position(i).ne.0.0d0) then
                         !-- Axis(gpc) --> Constant axis
                     write(*,'(" Cannot perform the 2D scan with a non-zero",A2," starting point")') axis_name(i)
+                    write(*,*) "Stop!"
                     write(*,*)
                     stop 
                 end if
@@ -1624,7 +1919,7 @@ write(*,*) "            The input for this run is:"
 write(*,'(" Central point ((x,y,z)·10^-4 a.u)",xF8.3,xF8.3,xF8.3)') x0,y0,z0
 write(*,'(" Maximum radius of ",F7.5," a.u for the iterative resolutions")') radius
 write(*,'(" Number of points computed: 0 (1D) ",I9," (2D) ",I10," (3D) ")') ,nint(PI*(radius**2-initial_position(gpc)**2)*1.0d8),nint(4.0d0*PI*radius**2*1.0d8)
-if(grid.ge.1E+3) write(*,*) "       Warning! Grid too dense for scanning"
+if(grid.ge.1E+4) write(*,*) "       Warning! Grid too dense for scanning"
 if(grid.le.1E+2) write(*,*) "       Warning! Grid too  thin for scanning"
 if (redox_potential.ne.0.0) then
     write(*,'(" Potential (a.u)",xF8.3)') redox_potential
@@ -1830,6 +2125,7 @@ end if
 !==============================================================================!
 
         !--- Reading the NLOPs for the reactants small molecules
+n=0;m=0
 if (index(line,"#- Small molecules: Reactants -#").ne.0.or.index(line,"#- small molecules: reactants -#").ne.0 &
 & .or.index(line,"#- small molecules: Reactants -#").ne.0.or.index(line,"#- Small molecules: reactants -#").ne.0) then
 
@@ -1855,6 +2151,7 @@ if (index(line,"#- Small molecules: Reactants -#").ne.0.or.index(line,"#- small 
         read(2,'(A80)') line
         if (index(line,"#- END OF FILE -#").ne.0.or.index(line,"#- End of file -#").ne.0.or.index(line,"#- end of file -#").ne.0) then
             write(*,*) "Warning! No small molecules detected at the products."
+            E_lig_r=E_iter; mu_lig_r=mu_iter; alpha_lig_r=alpha_iter; beta_lig_r=beta_iter
             E_lig_p=0.0d0; mu_lig_p=0.0d0; alpha_lig_p=0.d0; beta_lig_p=0.0d0
             goto 99999
         else if (index(line,"#- Small molecules: Products -#").ne.0.or.index(line,"#- small molecules: products -#").ne.0 &
@@ -1917,12 +2214,13 @@ end if
 
     !--- Redefinition of the original names for the later data handling
 E_lig_p=E_iter; mu_lig_p=mu_iter; alpha_lig_p=alpha_iter; beta_lig_p=beta_iter
+99999 continue
 do i=1,3
     mu_lig(i)=mu_lig_p(i)-mu_lig_r(i)
     do j=1,3
         alpha_lig(i,j)=alpha_lig_p(i,j)-alpha_lig_r(i,j)
         do k=1,3
-            beta_lig(i,j,k)=beta_lig_p(i,j,k)-beta_lig_r(i,j,k)
+            beta_lig(i,j,k)=-(beta_lig_p(i,j,k)-beta_lig_r(i,j,k))
         end do
     end do
 end do
@@ -1932,29 +2230,29 @@ if(Guillem(3).eqv..TRUE.) then
     write(*,*) "=============================================================================="
     write(*,*)
     write(*,*) "                Joint properties for the small molecules (Lig)"
-    write(*,'(" Reactants: ",Ax)') (trim(name_reactant_ligand(i)),i=1,n)
-    write(*,'(" Products:  ",Ax)') (trim(name_product_ligand(i)),i=1,m)
+    if (n.ge.1) write(*,'(" Reactants: ",Ax)') (trim(name_reactant_ligand(i)),i=1,n)
+    if (m.ge.1) write(*,'(" Products:  ",Ax)') (trim(name_product_ligand(i)),i=1,m)
     write(*,*) "------------------------------------------------------------------------------"
     write(*,*) "                            Dipole moment"
-    write(*,*) (mu_lig_p(i)-mu_lig_r(i),i=1,3)
+    write(*,*) (mu_lig(i),i=1,3)
     write(*,*)
     write(*,*) "                        Polarizability matrix"
     do i=1,3
-            write(*,*) (alpha_lig_p(i,j)-alpha_lig_r(i,j),j=1,3)
+            write(*,*) (alpha_lig(i,j),j=1,3)
     end do
     write(*,*)
     write(*,*) "                    First hyperpolarizability tensor"
     write(*,*) "X _ _"
     do j=1,3
-            write(*,*) (beta_lig_p(1,j,k)-beta_lig_r(1,j,k),k=1,3)
+            write(*,*) (beta_lig(1,j,k),k=1,3)
     end do
     write(*,*) "Y _ _"
     do j=1,3
-            write(*,*) (beta_lig_p(2,j,k)-beta_lig_r(2,j,k),k=1,3)
+            write(*,*) (beta_lig(2,j,k),k=1,3)
     end do
     write(*,*) "Z _ _"
     do j=1,3
-            write(*,*) (beta_lig_p(3,j,k)-beta_lig_r(3,j,k),k=1,3)
+            write(*,*) (beta_lig(3,j,k),k=1,3)
     end do
     write(*,*) "=============================================================================="
     write(*,*)
@@ -1968,14 +2266,13 @@ end if
           !   Computing the molecular properties of the system   !
 !==============================================================================!
 
-99999 continue
 E_0=E_p-E_r+E_lig_p-E_lig_r ! Energy in atomic units
 do i=1,3
-    mu(i)=mu_p(i)-mu_r(i)+mu_lig_p(i)-mu_lig_r(i)
+    mu(i)=mu_p(i)-mu_r(i)!+mu_lig_p(i)-mu_lig_r(i)
     do j=1,3
-        alpha(i,j)=alpha_p(i,j)-alpha_r(i,j)+alpha_lig_p(i,j)-alpha_lig_r(i,j)
+        alpha(i,j)=alpha_p(i,j)-alpha_r(i,j)!+alpha_lig_p(i,j)-alpha_lig_r(i,j)
         do k=1,3
-            beta(i,j,k)=-(beta_p(i,j,k)-beta_r(i,j,k)+beta_lig_p(i,j,k)-beta_lig_r(i,j,k))
+            beta(i,j,k)=-(beta_p(i,j,k)-beta_r(i,j,k))!+beta_lig_p(i,j,k)-beta_lig_r(i,j,k))
         end do
     end do
 end do
@@ -1991,7 +2288,7 @@ write(*,*)
 write(*,*) "=============================================================================="
 write(*,*) "     Thermodynamics and non-linear optical properties of the system"
 write(*,*) "------------------------------------------------------------------------------"
-write(*,'("    Gibbs free energy (ΔG)",xF15.4,x"kcal/mol")') E_0*6.2751d2
+write(*,'("    Gibbs free energy (ΔG)",xF15.4,x"kcal/mol")') E_0*hartree2kcal
 write(*,*) "            Dipole moment vector (μ)"
 write(*,'(xxxxxE11.4,xxxxxE11.4,xxxxxE11.4)') (mu(i)+mu_lig_p(i)-mu_lig_r(i),i=1,3)
 write(*,*)
@@ -2003,15 +2300,15 @@ write(*,*)
 write(*,*) "      First hyperpolarizability tensor (β)"
 write(*,*) "X _ _"
 do j=1,3
-        write(*,'(xxxxxE11.4,xxxxxE11.4,xxxxxE11.4)') (beta(1,j,k)+beta_lig_p(1,j,k)-beta_lig_r(1,j,k),k=1,3)
+        write(*,'(xxxxxE11.4,xxxxxE11.4,xxxxxE11.4)') (beta(1,j,k)+(-beta_lig_p(1,j,k)+beta_lig_r(1,j,k)),k=1,3)
 end do
 write(*,*) "Y _ _"
 do j=1,3
-        write(*,'(xxxxxE11.4,xxxxxE11.4,xxxxxE11.4)') (beta(2,j,k)+beta_lig_p(2,j,k)-beta_lig_r(2,j,k),k=1,3)
+        write(*,'(xxxxxE11.4,xxxxxE11.4,xxxxxE11.4)') (beta(2,j,k)+(-beta_lig_p(2,j,k)+beta_lig_r(2,j,k)),k=1,3)
 end do
 write(*,*) "Z _ _"
 do j=1,3
-        write(*,'(xxxxxE11.4,xxxxxE11.4,xxxxxE11.4)') (beta(3,j,k)+beta_lig_p(3,j,k)-beta_lig_r(3,j,k),k=1,3)
+        write(*,'(xxxxxE11.4,xxxxxE11.4,xxxxxE11.4)') (beta(3,j,k)+(-beta_lig_p(3,j,k)+beta_lig_r(3,j,k)),k=1,3)
 end do
 write(*,*)
 write(*,*) "------------------------------------------------------------------------------"
@@ -2022,8 +2319,8 @@ write(*,'(" If you wish to make any change at the input file",A20,",")') trim(fi
 write(*,*) "                        please press Ctrl+C"
 write(*,*) 
 !--- S'ha de fer un if segons el n_dim
-write(*,'("     Searching the ",A2,x"minimum field strength for the input-imposed conditions")') axis_name(gpc)
-write(*,*) "                           Please wait..."
+!write(*,'("     Searching the ",A2,x"minimum field strength for the input-imposed conditions")') axis_name(gpc)
+!write(*,*) "                           Please wait..."
 !--- S'ha de fer un if segons el n_dim
 write(*,*) 
 write(*,*)
@@ -2031,8 +2328,11 @@ write(*,*) "====================================================================
 !=============================================================================!
 !----------------------------VOAM STARTS HERE---------------------------------!
 !=============================================================================!
+if (n_dim.eq.0) then !-- Scanning VOAM is performed
+    call VOAM_0D(axis_name,grid,radius)
+end if
 if (n_dim.eq.1) then !-- 1D resolution is performed
-    call VOAM_1D(Guillem,order_nlop,gpc,radius,axis,initial_position,axis_name,tol)
+    call VOAM_1D(Guillem,domain,order_nlop,gpc,radius,axis,initial_position,axis_name,tol)
 end if
 if (n_dim.eq.2) then !-- 2D resolution is performed
     call VOAM_2D(Guillem,order_nlop,gpc,radius,axis,initial_position,axis_name,grid)  
@@ -2046,8 +2346,8 @@ end if
 write(*,*) "===================================================================================================================================================================================="
 write(*,*)
 write(*,*)
-write(*,*) " Program written by Dr. Pau Besalú and Guillem Pey* for his Master Thesis"
-write(*,*) "            supervised by Dr. Josep Maria Luis Luis in the"
+write(*,*) "  Program written by Dr. Pau Besalú and Guillem Pey* for his Master Thesis"
+write(*,*) "supervised by Dr. Josep Maria Luis Luis and Prof. Julio Lloret-Fillol in the"
 write(*,*) "    Master in Advanced Catalysis and Molecular Modeling (MACMoM)"
 write(*,*) "                at Universitat de Girona (UdG) on 2024" 
 write(*,*) 
