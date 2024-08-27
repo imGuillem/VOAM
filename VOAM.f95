@@ -1,6 +1,6 @@
 !-- Program written by Pau Besalú and Guillem Pey* - TFM Guillem Pey
 !-- VOAM.f95 (VoltOhmAmpereMaxwell.f95) 
-!-- OpEEF searcher within the FDB_beta method using the third degree equation, cylindrical and spherical spherical coordinates
+!-- OpEEF searcher within the FDB_beta method using the third degree equation, cylindrical and polar spherical spherical coordinates
 Module VOAM
 implicit none
 ! Non-linear optical properties (NLOPs) and energies
