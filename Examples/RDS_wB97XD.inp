@@ -1,6 +1,6 @@
 RDS with wB97XD(SMD)/def2-TZVPD
 
-Method: Axis scan=00z Taylor=beta Field=negative
+Method: Axis scan=00z Taylor=beta
 Thermochemistry: Target barrier=7.77 Redox=0 Potential=0.00
 Computation: Initial point=(0,0,0) Modulus=100 Grid=2000
 Extra: tolerance=1E-12
