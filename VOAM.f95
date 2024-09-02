@@ -1,6 +1,6 @@
-!-- Program written by Pau Besalú and Guillem Pey* - Master's Thesis Guillem Pey
+!-- Program written by Pau Besalú and Guillem Pey* - TFM Guillem Pey
 !-- VOAM.f95 (VoltOhmAmpereMaxwell.f95) 
-!-- OpEEF searcher within the FDB_beta method using the third degree equation, cylindrical and polar spherical spherical coordinates
+!-- OpEEF searcher within the FDB_beta method using the third degree equation, cylindrical and polar spherical coordinates
 Module VOAM
 implicit none
 ! Non-linear optical properties (NLOPs) and energies
@@ -41,7 +41,7 @@ contains
     character*2,dimension(3) :: axis_name
     double precision, allocatable, dimension (:,:) :: dG_field
     double precision :: radius,step,field,G_field,G_main,G_side
-    integer i,grid
+    integer i,j,k,grid
     
         !-- Field scanning
     allocate(dG_field(int(grid/10)+1,4))
@@ -58,6 +58,7 @@ contains
         end do
     end do
     write(*,*) "        VOAM - Scan of the input file"
+    write(*,*) "=================================================================="
     write(*,'("      F(a.u.)",XXXX"G-"A2,"(kcal/mol)",XXXX"G-"A2,"(kcal/mol)",XXXX"G-"A2,"(kcal/mol)")') axis_name(1),axis_name(2),axis_name(3)
     do i=1,(grid/10)+1
         write(*,'(xxF12.6,xxxxF12.6,xxxxxxxxF12.6,xxxxF12.6)') (dG_field(i,j),j=1,4)
@@ -72,14 +73,15 @@ contains
     !=========================================================================!
 !###################################################################################################
 
-    Subroutine VOAM_1D(Guillem,domain,order_nlop,gpc,radius,axis,initial_position,axis_name,tol)
+    Subroutine VOAM_1D(Guillem,order_nlop,gpc,radius,axis,initial_position,axis_name,tol)
     implicit none
     logical,dimension(10) :: Guillem
     double precision, dimension (3) :: F,initial_position
+    double precision, allocatable, dimension (:,:) :: dG_field
     character*2,dimension(3) :: axis_name
     integer, dimension(3) :: axis
     double precision :: tmp_energy,tmp_mu,tmp_alpha
-    double precision :: radius,domain
+    double precision :: radius,domain,field
     integer step,gpc,order_nlop
         !---Specific parameters for the 3rd degree solver---!
     integer i,n,sign_eenergy,sign_aalpha
@@ -93,7 +95,28 @@ contains
             !--         Reference of the 3rd degree solution:
             !-- http://olewitthansen.dk/Mathematics/The_cubic_equation.pdf
 
-    tmp_energy=E_0-abs(redox_coef)*redox_potential-target_barrier/hartree2kcal      !-- Energy
+        !-- Defining whether it is going to be used the negative- or positive-field definition of the 1D-ΔG(F) expression
+    allocate(dG_field(21,2))
+    E_0=E_0-abs(redox_coef)*redox_potential
+    do i=1,21
+            !-- Computing an internal VOAM_0D to know the shape of the 1D-ΔG(F) function
+        field=-radius+(i-1)*1.0d-3
+        dG_field(i,2)=E_0-(mu(gpc)+sign(1.0d0,field)*mu_lig(3))*field-0.5d0*(alpha(gpc,gpc)+alpha_lig(3,3))*field**2-(1.0d0/6.0d0)*(beta(gpc,gpc,gpc)+sign(1.0d0,field)*beta_lig(3,3,3))*field**3
+        dG_field(i,1)=field
+    end do
+    do i=1,21
+            !-- Defining the region where the solution should be with a 3 kcal/mol threshold
+        if (abs(dG_field(i,2)-target_barrier/hartree2kcal)*hartree2kcal.le.3.0d0) then
+            field=dG_field(i,1)
+            if (abs(field).le.abs(dG_field(i,1))) then
+                field=dG_field(i,1); domain=1.0d0*sign(1.0d0,field) 
+                exit
+            end if
+        end if
+    end do               
+    deallocate(dG_field)
+ 
+    tmp_energy=E_0-target_barrier/hartree2kcal                                      !-- Energy
     mu(gpc)=mu(gpc)+domain*mu_lig(3)                                                !-- Dipole moment
     alpha(gpc,gpc)=alpha(gpc,gpc)+alpha_lig(3,3)                                    !-- Polarizability matrix
     beta(gpc,gpc,gpc)=beta(gpc,gpc,gpc)+domain*beta_lig(3,3,3)                      !-- Hyperpolarizability tensor
@@ -487,7 +510,7 @@ contains
 
                     !-- Print of the minimum solution --!
                 if (abs(min_root).le.max_radius) then
-                    write(*,'(" (β-FDB-",A2,") - Case 2 - The minimum field strength is:",xA2," = ",xF12.2,"(*10^-4) a.u")') axis_name(gpc),axis_name(gpc),min_root*1.0d4
+                    write(*,'(" (β-FDB-",A2,") - Case 3 - The minimum field strength is:",xA2," = ",xF12.2,"(*10^-4) a.u")') axis_name(gpc),axis_name(gpc),min_root*1.0d4
                     write(*,*)
                 else
                     write(*,'(" (β-FDB-",A2,") - Maximum radius:",xF10.6)') axis_name(gpc),max_radius
@@ -518,8 +541,10 @@ contains
 !================================ γ-VOAM-1D ==========================================    
 
     if (order_nlop.eq.4) then
+            !-- Galois is proud to tell this can still be analytical
         write(*,*) " Gamma approach is not implemented yet!"
         write(*,*) " Please consider lower approximations."
+        return
     end if
 
 !================================ γ-VOAM-1D ==========================================    
@@ -753,7 +778,7 @@ contains
             write(*,'(" (α-FDB-",A2,A2,") - Number of solutions:",xI2)') axis_name(2-axis(1)),axis_name(2+axis(3)),dimsort
             write(*,*) "----------------------------------------------------------------------------------------------" 
             do i=1,dimsort
-                write(*,'(" (α-FDB-",A2,A2,") - Bubble sort matrix - Row ",I2," == (ρ,φ;",A2,") = (",xF12.10,",",xF6.4,",",xF6.4")")') axis_name(2-axis(1)),axis_name(2+axis(3)),i,axis_name(gpc),sort(i,1),sort(i,2),F(gpc)
+                write(*,'(" (α-FDB-",A2,A2,") - Bubble sort matrix - Row ",I3," == (ρ,φ;",A2,") = (",xF12.8,",",xF6.4,",",xF6.4")")') axis_name(2-axis(1)),axis_name(2+axis(3)),i,axis_name(gpc),sort(i,1),sort(i,2),F(gpc)
             end do
             write(*,*) "----------------------------------------------------------------------------------------------" 
         end if
@@ -761,7 +786,7 @@ contains
             !-- Print of the absolute minimum solution
         if (dimsort.ne.0) then
             write(*,*)
-            write(*,'(" (α-FDB-",A2,A2,") - The minimum solution in cylindrical cooridnates: (ρ,φ;",A2,")   = (",xF13.10,",",xF6.4,",",xF6.4,") (*10^-4) a.u ")') &
+            write(*,'(" (α-FDB-",A2,A2,") - The minimum solution in cylindrical cooridnates: (ρ,φ;",A2,")   = (",xF12.8,",",xF6.4,",",xF6.4,") (*10^-4) a.u ")') &
             & axis_name(2-axis(1)),axis_name(2+axis(3)),axis_name(gpc),sort(1,1)*1.0d4,sort(1,2),F(gpc)*1.0d4
             write(*,'(" (α-FDB-",A2,A2,") - The minimum solution in Cartesian cooridnates:   (",A2,",",A2,";",A2,") = (",F12.6,",",F12.6,",",F12.6,") (*10^-4) a.u ")') &
             & axis_name(2-axis(1)),axis_name(2+axis(3)),axis_name(2-axis(1)),axis_name(2+axis(3)),axis_name(gpc),sort(1,1)*dcos(sort(1,2))*1.0d4,sort(1,1)*dsin(sort(1,2))*1.0d4,F(gpc)*1.0d4
@@ -886,9 +911,9 @@ contains
 
             else if (omega.lt.0.0d0) then ! ω < 0 --> Three different real solutions
                 angle=dacos(-0.5d0*real(q)/sqrt(-1.0d0*real(p)**3/27.0d0))
-                tmp_root(1)=2.0d0*sqrt(-p/3.0d0)*cos(angle/3.0d0)           
-                tmp_root(2)=2.0d0*sqrt(-p/3.0d0)*cos((angle+2.0d0*PI)/3.0d0)
-                tmp_root(3)=2.0d0*sqrt(-p/3.0d0)*cos((angle+4.0d0*PI)/3.0d0)
+                tmp_root(1)=2.0d0*sqrt(-p/3.0d0)*cos(angle/3.0d0)-aalpha/3.0d0/bbeta           
+                tmp_root(2)=2.0d0*sqrt(-p/3.0d0)*cos((angle+2.0d0*PI)/3.0d0)-aalpha/3.0d0/bbeta
+                tmp_root(3)=2.0d0*sqrt(-p/3.0d0)*cos((angle+4.0d0*PI)/3.0d0)-aalpha/3.0d0/bbeta
 
                     !-- Print the specific raw solutions
                 if (Guillem(6).eqv..TRUE.) then
@@ -996,6 +1021,7 @@ contains
     integer, dimension(3) :: axis
     character*2,dimension(3) :: axis_name
     double precision, dimension(3) :: F,initial_position
+    double precision, allocatable, dimension (:,:) :: dG_field
     integer order_nlop,grid
     double precision :: max_radius,radius
         !-- Only for μ-FDB
@@ -1008,12 +1034,13 @@ contains
     double complex :: eenergy,mmu,aalpha,bbeta
     double complex :: p,q
     double precision :: omega
-    double precision :: min_root,tmp_energy,tmp_mu,tmp_alpha,tmp_beta
-    double precision :: theta,phi,angle,discriminant
+    double precision :: tmp_energy,tmp_mu,tmp_alpha,tmp_beta,min_root
+    double precision :: tmp_energy_lig,tmp_mu_lig,tmp_alpha_lig,tmp_beta_lig
+    double precision :: theta,phi,angle,discriminant,field,orientation
     integer :: sign_aalpha,sign_eenergy
     integer :: dimsort,n
         !-- Integers for iteration
-    integer gpc,step,upper,lower
+    integer gpc,step,upper,lower,tracker
     integer i,j,k
 
 !================================ μ-VOAM-3D ==========================================    
@@ -1254,19 +1281,10 @@ contains
     if (order_nlop.eq.3) then
     
             !-- Initialization of the tmp_NLOP values
-        tmp_energy=E_0-abs(redox_coef)*redox_potential-target_barrier/hartree2kcal !-- Energy associated to thermochemistry
-        do i=1,3
-            mu(i)=mu(i)+mu_lig(3)
-            do j=1,3
-                alpha(i,j)=alpha(i,j)+alpha_lig(i,j)
-                do k=1,3
-                    beta(i,j,k)=beta(i,j,k)+beta_lig(i,j,k)
-                end do
-            end do
-        end do
+        tmp_energy=E_0-abs(redox_coef)*redox_potential !-- Energy associated to thermochemistry
 
         do i=1,grid         !-- Loop for \theta  == π/{grid}
-            do j=1,2*grid   !-- Loop for \varphi == 2π/{2*grid}
+             do j=1,2*grid   !-- Loop for \varphi == 2π/{2*grid}
 
                     !-- Declaration of the scanning angles: 0.le.φ.le.2π && 0.le.θ.le.π
                 theta=((i-1)/(1.0d0*grid-1))*PI; phi=((j-1)/(2.0d0*grid-1))*2.0d0*PI
@@ -1276,28 +1294,57 @@ contains
 
                     !-- Initialization of the tmp_NLOP values
                 tmp_mu=0.0d0; tmp_alpha=0.0d0; tmp_beta=3.0d0*beta(1,2,3)*F(1)*F(2)*F(3)
-                    
+                !tmp_mu_lig=0.0d0; tmp_alpha_lig=0.0d0; Tmp_beta_lig=3.0d0*beta_lig(1,2,3)*F(1)*F(2)*F(3)
+                tmp_mu_lig=mu_lig(3);tmp_alpha_lig=alpha_lig(3,3);tmp_beta_lig=beta_lig(3,3,3)
+   
                     !-- Computation of the angular NLOP
                 do k=1,3
                         !-- Angular dipole moment coefficient
                     tmp_mu=tmp_mu+mu(k)*F(k)
+                    !tmp_mu_lig=tmp_mu+mu(3)*F(k)
 
                         !-- Angular polarizability coefficient
                     tmp_alpha=tmp_alpha+alpha(k,k)*F(k)**2+alpha(nint(1+0.2d0*k),nint(2+k/3.0d0))*F(nint(1+0.2d0*k))*F(nint(2+k/3.0d0))
+                    !tmp_alpha_lig=tmp_alpha+alpha_lig(k,k)*F(k)**2+alpha_lig(nint(1+0.2d0*k),nint(2+k/3.0d0))*F(nint(1+0.2d0*k))*F(nint(2+k/3.0d0))
 
                         !-- Angular hyperpolarizability coefficient - Part 1
                     tmp_beta=tmp_beta+beta(k,k,k)*F(k)**3+3.0d0*beta(1,k,3)*F(1)*F(k)*F(3)
+                    !tmp_beta_lig=tmp_beta_lig+beta_lig(k,k,k)*F(k)**3+3.0d0*beta_lig(1,k,3)*F(1)*F(k)*F(3)
                 end do
                 do k=1,2
                         !-- Angular hyperpolarizability coefficient - Part 2
                     tmp_beta=tmp_beta+3.0d0*(beta(k,k,k+1)*F(k)+beta(k,k+1,k+1)*F(k+1))*F(k)*F(k+1)
+                    !tmp_beta_lig=tmp_beta_lig+3.0d0*(beta_lig(k,k,k+1)*F(k)+beta_lig(k,k+1,k+1)*F(k+1))*F(k)*F(k+1)
                 end do
-                !write(*,*) tmp_energy*hartree2kcal,tmp_mu,tmp_alpha,tmp_beta
-                !stop
-                eenergy=cmplx(tmp_energy,0.0d0)
-                mmu=-cmplx(tmp_mu,0.0d0)
-                aalpha=-0.5d0*cmplx(tmp_alpha,0.0d0)
-                bbeta=-(1.0d0/6.0d0)*cmplx(tmp_beta,0.0d0)
+
+                if(allocated(dG_field)) deallocate (dG_field)
+                allocate(dG_field(21,2))
+                do k=1,21
+                        !-- Computing an internal VOAM_0D to know the shape of the radial 3D-ΔG(F) function
+                    field=-radius+(k-1)*1.0d-3
+                    dG_field(k,2)=tmp_energy-(tmp_mu+sign(1.0d0,field)*tmp_mu_lig)*field-0.5d0*(tmp_alpha+tmp_alpha_lig)*field**2-(1.0d0/6.0d0)*(tmp_beta+sign(1.0d0,field)*tmp_beta_lig)*field**3
+                    dG_field(k,1)=field
+                end do
+                tracker=0
+                do k=1,21
+                        !-- Defining the region where the solution should be with a 3 kcal/mol threshold
+                    if (abs(dG_field(k,2)-target_barrier/hartree2kcal)*hartree2kcal.le.3.0d0) then
+                        field=dG_field(k,1)
+                        if (abs(field).le.abs(dG_field(k,1))) then
+                            field=dG_field(k,1); orientation=1.0d0*sign(1.0d0,field)
+                            exit
+                        end if
+                    else
+                        tracker=tracker+1
+                        if (tracker.eq.21) goto 9999
+                    end if
+                end do
+                deallocate(dG_field)
+                
+                eenergy=cmplx(tmp_energy-target_barrier/hartree2kcal,0.0d0)
+                mmu=-cmplx(tmp_mu+orientation*tmp_mu_lig,0.0d0)
+                aalpha=-0.5d0*cmplx(tmp_alpha+tmp_alpha_lig,0.0d0)
+                bbeta=-(1.0d0/6.0d0)*cmplx(tmp_beta+orientation*tmp_beta_lig,0.0d0)
 
                     !-- Computation of the specific parameters for the third degree solution
                 p=(3.0d0*bbeta*mmu-aalpha**2)/3.0d0/bbeta**2
@@ -1316,9 +1363,8 @@ contains
                     !##################################################################!
                     !              Computing the third degree solutions                !
                     !##################################################################!
-
+                
                 if (abs(bbeta).lt.tol) then !angular-bbbeta is neglegible
-
                     if (abs(mmu).lt.tol) then ! angular-mmu and -beta are neglegible --> ax**2+-b=0
                         sign_aalpha=sign(1.0d0,real(aalpha));sign_eenergy=sign(1.0d0,real(eenergy))
 
@@ -1330,7 +1376,6 @@ contains
                                 write(*,'(" (β-FDB-XYZ) - Negative complex root:",xF12.6," +i",xF12.6," a.u")') -1.0d0*sqrt(-eenergy/aalpha)
                                 write(*,*)
                             end if
-                            continue
                         else
                                     !    ax**2-b=0 ---> The solution is proven to be real.
                                 !    Double signed root == tmp_root(i)=positive_root  tmp_root(i+1)=negative_root
@@ -1391,14 +1436,12 @@ contains
                                 write(*,'(" (β-FDB-XYZ) - Negative pure complex second degree root:",xF12.6," +i",xF12.6," a.u")') -mmu-sqrt(mmu**2-4.0d0*aalpha*eenergy)/2.0d0/aalpha
                                 write(*,*)
                             end if
-                            continue
                         end if
-
                     end if
                     
                         !-- Print all min_root's in both spherical and Cartesian coordinates
                     if (Guillem(8).eqv..TRUE.) then
-                        write(*,'(" (β-FDB-XYZ) - Polar spherical solutions (R,θ,φ)  = (",xF12.10,",",xF6.4,",",xF6.4,") a.u ")') min_root,theta,phi
+                        write(*,'(" (β-FDB-XYZ) - Spherical polar solutions (R,θ,φ)  = (",xF12.10,",",xF6.4,",",xF6.4,") a.u ")') min_root,theta,phi
                         write(*,'(" (β-FDB-XYZ) - Cartesian solutions (Fx,Fy,Fz) = (",F12.6,",",F12.6,",",F12.6,") a.u ")') min_root*F(1),min_root*F(2),min_root*F(3)
                         write(*,*)
                     end if
@@ -1438,7 +1481,7 @@ contains
                         end if
 
                             !-- Get the closest-to-zero solution
-                        min_root=tmp_root(1)
+                        min_root=abs(tmp_root(1))
                         if (abs(tmp_root(2)).lt.abs(min_root)) min_root=abs(tmp_root(2))
 
                             !-- Checking whether the solutions are inside the sphere
@@ -1448,9 +1491,9 @@ contains
 
                     else if (omega.lt.0.0d0) then ! ω < 0 --> Three different real solutions
                         angle=dacos(-0.5d0*real(q)/sqrt(-1.0d0*real(p)**3/27.0d0))
-                        tmp_root(1)=2.0d0*sqrt(-p/3.0d0)*cos(angle/3.0d0)           
-                        tmp_root(2)=2.0d0*sqrt(-p/3.0d0)*cos((angle+2.0d0*PI)/3.0d0)
-                        tmp_root(3)=2.0d0*sqrt(-p/3.0d0)*cos((angle+4.0d0*PI)/3.0d0)
+                        tmp_root(1)=2.0d0*sqrt(-p/3.0d0)*cos(angle/3.0d0)-aalpha/3.0d0/bbeta     
+                        tmp_root(2)=2.0d0*sqrt(-p/3.0d0)*cos((angle+2.0d0*PI)/3.0d0)-aalpha/3.0d0/bbeta
+                        tmp_root(3)=2.0d0*sqrt(-p/3.0d0)*cos((angle+4.0d0*PI)/3.0d0)-aalpha/3.0d0/bbeta
 
                             !-- Print the specific raw solutions
                         if (Guillem(6).eqv..TRUE.) then
@@ -1482,8 +1525,9 @@ contains
                         write(*,*)
                     end if
 
-                    tmp_mu=0.0d0; tmp_alpha=0.0d0; tmp_beta=0.0d0
                 end if
+                9999 continue
+                tmp_mu=0.0d0;tmp_alpha=0.0d0;tmp_beta=0.0d0;tmp_mu_lig=0.0d0;tmp_alpha_lig=0.0d0;tmp_beta_lig=0.0d0
             end do
         end do
 
@@ -1523,10 +1567,10 @@ contains
             !-- Print the Bubble Sort matrix
         if (Guillem(9).eqv..TRUE.) then
             write(*,*)
-            write(*,'(" (β-FDB-XYZ) - Number of solutions:",xI2)') dimsort
+            write(*,'(" (β-FDB-XYZ) - Number of solutions:",xI3)') dimsort
             write(*,*) "----------------------------------------------------------------------------------------------" 
             do i=1,dimsort
-                write(*,'(" (β-FDB-XYZ) - Bubble sort matrix - Row ",I2," == (R,θ,φ) = (",xF12.10,",",xF6.4,",",xF6.4")")') i,sort(i,1),sort(i,2),sort(i,3)
+                write(*,'(" (β-FDB-XYZ) - Bubble sort matrix - Row ",I3," == (R,θ,φ) = (",xF12.8,",",xF6.4,",",xF6.4")")') i,sort(i,1)*1.0d4,sort(i,2),sort(i,3)
             end do
             write(*,*) "----------------------------------------------------------------------------------------------" 
         end if
@@ -1534,7 +1578,7 @@ contains
             !-- Print of the absolute minimum solution
         if (dimsort.ne.0) then
             write(*,*)
-            write(*,'(" (β-FDB-XYZ) - The minimum solution in polar spherical cooridnates: (R,θ,φ)    = (",xF12.10,",",xF6.4,",",xF6.4,") (*10^-4) a.u ")') &
+            write(*,'(" (β-FDB-XYZ) - The minimum solution in polar spherical cooridnates: (R,θ,φ)    = (",xF12.8,",",xF6.4,",",xF6.4,") (*10^-4) a.u ")') &
             & sort(1,1)*1.0d4,sort(1,2),sort(1,3)
             write(*,'(" (β-FDB-XYZ) - The minimum solution in Cartesian cooridnates: (Fx,Fy,Fz) = (",F12.6,",",F12.6,",",F12.6,") (*10^-4) a.u ")') &
             & sort(1,1)*dsin(sort(1,2))*dcos(sort(1,3))*1.0d4,sort(1,1)*dsin(sort(1,2))*dsin(sort(1,3))*1.0d4,sort(1,1)*dcos(sort(1,2))*1.0d4
@@ -1624,10 +1668,8 @@ read(2,'(A100)') line !-- Line corresponding to the 'Method' line
 if(index(line,"Method:").ne.0.or.index(line,"method:").ne.0) then ! Try reading the axis scan and the NLOPs
 
         !--- Indices for the method-related keywords
-    index_scan=index(line,"scan") !-- Detecting the first coincidence for the 'scan' word to detect the scanning axis
-    index_field=index(line,"Field")             !-- Detecting whtether VOAM-1D should be solved in the positive or negative domain of fields
-    index_field=index_field+index(line,"field")
-    index_NLOP=index(line,"aylor") !-- Same as index_scan
+    index_scan=index(line,"scan")                   !-- Detecting the first coincidence for the 'scan' word to detect the scanning axis
+    index_NLOP=index(line,"aylor")                  !-- Same as index_scan
     index_NLOP=index_NLOP+index(line,"AYLOR")
 
     index_Guillem=index(line,"Guillem")             ! It's me, hi! I'm the developer, it's me
@@ -1642,17 +1684,17 @@ if(index(line,"Method:").ne.0.or.index(line,"method:").ne.0) then ! Try reading 
                 n_dim=0
                 !====================== 1D CASES ==========================!
             case ("00X","0X0","X00","0x0","x00","00x","X","x","XXX","xxx","xx","XX")
-                    !-- Solve for R but with X-oriented NLOP
-                !-- Theta is PI halves and phi is zero, unless stated in the initial point
-                n_dim=1;gpc=1;axis(gpc)=1;theta=0.5d0*PI; phi=0.0d0
+                        !-- Solve for R but with X-oriented NLOP
+                    !-- Theta is PI halves and phi is zero, unless stated in the initial point
+                n_dim=1;gpc=1;axis(gpc)=1
             case ("00Y","0Y0","Y00","0y0","y00","00y","Y","y","YYY","yyy","yy","YY")
-                    !-- Solve for R but with Y-oriented NLOP
-                !-- Theta and phi are PI halves, unless stated in the initial point
-                n_dim=1;gpc=2;axis(gpc)=1;theta=0.5d0*PI; phi=0.5d0*PI
+                        !-- Solve for R but with Y-oriented NLOP
+                    !-- Theta and phi are PI halves, unless stated in the initial point
+                n_dim=1;gpc=2;axis(gpc)=1
             case ("00Z","0Z0","Z00","0z0","z00","00z","Z","z","ZZZ","zzz","zz","ZZ")
-                    !-- Solve for R but with Z-oriented NLOP
-                !-- Theta is zero, unless stated in the initial point
-                n_dim=1;gpc=3;axis(gpc)=1;theta=0.0d0
+                        !-- Solve for R but with Z-oriented NLOP
+                    !-- Theta is zero, unless stated in the initial point
+                n_dim=1;gpc=3;axis(gpc)=1
                 !===================== 2D CASES ===========================!
             case ("XY0","xy0","xy","XY","0XY","0xy","x0y","X0Y")
                 n_dim=2;axis=1;gpc=3;axis(gpc)=0;theta=0.5d0*PI
@@ -1672,23 +1714,6 @@ if(index(line,"Method:").ne.0.or.index(line,"method:").ne.0) then ! Try reading 
         stop
     end if
         
-        !-- Defining whether VOAM-1D works in the negative of positive domain of fields
-    if (n_dim.eq.1) then
-        if(index(line,"Field=").ne.0.or.index(line,"field=").ne.0) then
-            read(line(index_field+6:index_field+13),*) field_domain
-            select case(field_domain)
-                case ("positive","Positive","pos","Pos")
-                    domain=1.0d0
-                case ("negative","Negative","neg","Neg")
-                    domain=-1.0d0
-                case default
-                    write(*,*) "Non-defined field domain. Solving for positive fields"
-                    domain=1.0d0
-            end select    
-        end if
-        continue
-    end if
-
         !-- Reading the order of NLOP
     if (index(line,"Taylor=").ne.0.or.index(line,"taylor=").ne.0.or.index(line,"TAYLOR=").ne.0) then
         read(line(index_NLOP+6:index_NLOP+12),*) approximation
@@ -1831,7 +1856,7 @@ if(index(line,"Computation:").ne.0.or.index(line,"computation:").ne.0) then
     index_modulus=index(line,"dulus")
     index_trust=index(line,"dius")
     index_grid=index(line,"rid") 
-    !
+
     if(index(line,"Initial point=").ne.0.or.index(line,"initial point=").ne.0) then
             !-- Check the initial point of the scan
         index_initial_end=index(line,")")
@@ -1906,7 +1931,7 @@ if(index(line,"Extra:").ne.0.or.index(line,"extra:").ne.0) then ! Tolerance line
         stop
     end if
 else
-    tol=1E-4
+    tol=1E-8
 end if
 
 !==============================================================================!
@@ -2332,7 +2357,7 @@ if (n_dim.eq.0) then !-- Scanning VOAM is performed
     call VOAM_0D(axis_name,grid,radius)
 end if
 if (n_dim.eq.1) then !-- 1D resolution is performed
-    call VOAM_1D(Guillem,domain,order_nlop,gpc,radius,axis,initial_position,axis_name,tol)
+    call VOAM_1D(Guillem,order_nlop,gpc,radius,axis,initial_position,axis_name,tol)
 end if
 if (n_dim.eq.2) then !-- 2D resolution is performed
     call VOAM_2D(Guillem,order_nlop,gpc,radius,axis,initial_position,axis_name,grid)  
@@ -2419,7 +2444,7 @@ read(2,*) mu_i(1),mu_i(2),mu_i(3)
 
 if (mu_i(3).ge.0.0d0) then !and.abs(mu_i(3)).gt.tol) then
     continue
-    if (abs(mu_i(1)).lt.tol.and.abs(mu_i(2)).lt.tol) then
+    if (abs(mu_i(1)).lt.tol*1E+6.and.abs(mu_i(2)).lt.tol*1E+6) then
         continue
     else
         write(*,*) "Warning! The X and Y components of the dipole moment are not neglegible!"
