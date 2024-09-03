@@ -46,3 +46,6 @@ $$ \Delta E^\dagger (**F^-**) = \Delta E^\ddagger (**F**=0) - (\Delta \mu^\ddagg
 
 $$ \Delta E^\dagger (**F^+**) = \Delta E^\ddagger (**F**=0) - (\Delta \mu^\ddagger_{main} + \Delta \mu^\ddagger_{smallmolecules})F^{(+),1} - \frac{1}{2} \Delta \alpha F^2 - \frac{1}{6} (\Delta \beta^\ddagger_{main} + \beta^\ddagger_{smallmolecules}) F^{(+),3} $$
 
+So the quick scan are performed according to the just presented equations. Then, the cubic equation to be solved is tunned according to where the input target barrier is closest (and lowest field strength) to _i.e._ in the negative or positive field domain of fields.
+
+When trying to compute 2- and 3-D this approach is still applied but using the very modulus of the electric field instead of a single component of the electric field.
