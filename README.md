@@ -36,3 +36,7 @@ In consquence, the total expression can be gathered as
 
 $$ \Delta E^\dagger (**F**) = (\Delta E^\ddagger_{main} (**F**=0) - \Delta \mu^\ddagger_{main} F - \frac{1}{2} \Delta \alpha^\ddagger_{main} F^2 - \frac{1}{6} \Delta \beta^\ddagger_{main} F^3 + \Delta E^\ddagger_{smallmolecules} (**F**=0) - \Delta \mu^\ddagger_{smallmolecules} |F| - \frac{1}{2} \Delta \alpha^\ddagger_{smallmolecules} F^2 - \frac{1}{6} \beta^\ddagger_{smallmolecules} |F^3| $$
 
+or simply as
+
+$$ Delta E^\dagger (**F**) 0 Delta E^\ddagger (**F**=0) - (\Delta \mu^\ddagger_{main} F + \Delta \mu^\ddagger_{smallmolecules} |F|) - \frac{1}{2} \Delta \alpha F^2 - \frac{1}{6} (\frac{1}{6} \Delta \beta^\ddagger_{main} F^3 + \frac{1}{6} \beta^\ddagger_{smallmolecules} |F^3|) $$
+
