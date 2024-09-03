@@ -53,4 +53,32 @@ When trying to compute 2- and 3-D this approach is still applied but using the v
 The input file necessary for the execution of VOAM, though it may seem complex, contains enough information to compute the extra necessary data for the computation of the optimal electric field. It is separated in two sections: the keyword and the NLOPs section.
 
 The keyword section is then split into 4 lines of keywords: Method, Thermochemistry, Computation and Extra.
--  Method: in this line we only define which kind of scan wants to be performed (X, YZ or XYZ) and the level of approximation of the FDB method expansion
+- **Method**: in this line we only define which kind of scan wants to be performed (X, YZ or XYZ) and the level of approximation of the FDB method expansion.
+  - Axis scan: here we define the dimensionality of the scan to be performed. The following set of keywords will trigger the different resolutions
+    - 0D: Scan, scan, SCAN
+    - 1D: Can analitically compute the solution for the X, Y and Z axis.
+        X axis: ("00X","0X0","X00","0x0","x00","00x","X","x","XXX","xxx","xx","XX")
+        Y axis: ("00Y","0Y0","Y00","0y0","y00","00y","Y","y","YYY","yyy","yy","YY")
+        Z axis: ("00Z","0Z0","Z00","0z0","z00","00z","Z","z","ZZZ","zzz","zz","ZZ")
+    - 2D: Numerically compute the solution in the XY, YZ and XZ planes.
+        XY plane: ("XY0","xy0","xy","XY","0XY","0xy","x0y","X0Y")
+        YZ plane: ("0YZ","0yz","YZ0","yz0","ZY0","zy0","YZ","yz","y0z","Y0Z")
+        XZ plane: ("X0Z","x0z","0xz","xz0","0XZ","XZ0","xz","XZ")
+    - 3D: Compute the optimal strength for a three-dimensiona electric field vector. It is activated with "XYZ" or "xyz"
+  - Taylor: level approximation of the FDB method expansion.
+    - First order: ("Dipole","dipole","mu","Mu")
+    - Second order: ("Alpha","alpha")
+    - Third order: ("Beta","beta")
+  Any value different than the proposed ones will automatically stoped the execution of the code.
+- **Thermochemistry**: Line regarding the computation of the $\Delta$G of the input reaction.
+  - Target barrier: It allows float values with up to two decimal points.
+  - Redox: Number of electrons that are being exchanged in the reaction. Only integers.
+      - Input negative values are defined as reductions _i.e._ electrons are in the reactants reducing the main species.
+      - Input positive values are defined as oxidations _i.e._ electrons leave the system oxidising the main species.
+  - Potential: Redox potential (in V) vs SHE. It then can be converted to the ferrocene (0/+) reference electrode. More electrodes are yet to be implemented.
+- **Computation**: 
+  - Initial point: Defines the 
+  - Modulus: Defines the maximum modulus to be scanned and be allowed as a solution. Recommended value of 100 ($\cdot 10^{-4}$ a.u.)
+  - Grid: The number of partitions to be applied in the $\theta$ angle of the spherical polar coordinates of the $\phi$ in the cylindrical coordinate system. Recommended value of 1000 or 2000.
+- **Extra**: at the moment is only applied for the numerical tolerance. The default value is 1E-8.
+  - Tolerance: tolerance
