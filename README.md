@@ -23,3 +23,16 @@ and are the consequence of making a change of variable z = x-b/3a such as the se
 In addition, VOAM does also consider the reorientation of small molecules along their dipole moment when an electric field is applied. Hence, the methodology applied in VOAM.f95 begins with a quick scan of the FDB method equation while considering that the effect of the electric field in small molecules is independent of the orientation of the electric field, _i.e._ acting as an absolute value. Consequently, the FDB equation is going to be different according to the orientation (sign) of the electric field:
 
 $$ \Delta E^\ddagger_{reaction} (**F**) = \Delta E^\ddagger_{main} (**F**) + \Delta E^\ddagger_{small molecules} $$
+
+where the label "main" refers to those chemical species that are not easily reoriented with the electric field, opposed to the small molecules. In this regard, the "main" Maclaurin series is going to have the same shape as the first equation (_vide supra_) but the "small molecules" expansion in one dimension reads as
+
+$$ \Delta E^\ddagger (**F**) = \Delta E^\ddagger (**F**=0) - \Delta \mu \abs{F} - \frac{1}{2} \alpha \abs{F^2} - \frac{1}{6} \beta \abs{F^3} $$
+
+and knowing that the $\abs{x^2}$ is still $x^2$ it can be alternatively be written as
+
+$$ \Delta E^\ddagger (**F**) = \Delta E^\ddagger (**F**=0) - \Delta \mu \abs{F} - \frac{1}{2} \alpha F^2 - \frac{1}{6} \beta \abs{F^3} $$
+
+In consquence, the total expression can be gathered as
+
+$$ \Delta E^\dagger (**F**) = [ \Delta E^\ddagger (**F**=0) - \Delta \mu \abs{F} - \frac{1}{2} \alpha \abs{F^2} - \frac{1}{6} \beta \abs{F^3} ]
+
