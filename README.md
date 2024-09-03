@@ -108,4 +108,4 @@ The keyword section is then split into 4 lines of keywords: Method, Thermochemis
   
   - Tolerance: tolerance
 
- After the keyword section, as previously mentioned, it is followed the NLOP section. The different chemical species participating in the chemical reaction are separated by delimiters such "-#-#-#- Chemical species/Small molecules: Reactant/Product -#-#-#-".
+ After the keyword section, as previously mentioned, it is followed the NLOP section. The different chemical species participating in the chemical reaction are separated by delimiters such "-#-#-#- Chemical species/Small molecules: Reactant/Product -#-#-#-". It is recommended to look into the "Examples" folder, which contains 4 different examples, to have a better grasp of the structure of the input file.
