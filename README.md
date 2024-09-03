@@ -8,7 +8,7 @@ together with the analytic solution of the cubic equation published in the 16th 
 
 $$ ax^3 + bx^2 + cx + d = 0 $$
 
-$$ x= \Gamma^n \cdot \sqrt[3]{-\frac{q}{2} \sqrt{\frac{q^2}{4}+\frac{p^3}{27}}}$$
+$$ x= \Gamma^n \cdot \sqrt[3]{-\frac{q}{2} \sqrt{\frac{q^2}{4}+\frac{p^3}{27}}} + \Gamma^{n+3} \cdot \sqrt[3]{-\frac{q}{2} \sqrt{\frac{q^2}{4}-\frac{p^3}{27}}} \quad \text{for}\; n=0,1,2$$
 
 
 
