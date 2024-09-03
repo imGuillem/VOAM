@@ -34,5 +34,5 @@ $$ \Delta E^\ddagger (**F**) = \Delta E^\ddagger (**F**=0) - \Delta \mu |F| - \f
 
 In consquence, the total expression can be gathered as
 
-$$ \Delta E^\dagger (**F**) = \{ \Delta E^\ddagger (**F**=0) - \Delta \mu F - \frac{1}{2} \Delta \alpha F^2 - \frac{1}{6} \Delta \beta F^3 \}_{main} + [\Delta E^\ddagger (**F**=0) - \Delta \mu |F| - \frac{1}{2} \alpha F^2 - \frac{1}{6} \beta |F^3|]_{small molecules} $$
+$$ \Delta E^\dagger (**F**) = (\Delta E^\ddagger (**F**=0) - \Delta \mu F - \frac{1}{2} \Delta \alpha F^2 - \frac{1}{6} \Delta \beta F^3)_{main} + [\Delta E^\ddagger (**F**=0) - \Delta \mu |F| - \frac{1}{2} \alpha F^2 - \frac{1}{6} \beta |F^3|]_{small molecules} $$
 
