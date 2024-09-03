@@ -50,4 +50,7 @@ So the quick scan are performed according to the just presented equations. Then,
 
 When trying to compute 2- and 3-D this approach is still applied but using the very modulus of the electric field instead of a single component of the electric field.
 
-The input files (see the 
+The input file necessary for the execution of VOAM, though it may seem complex, contains enough information to compute the extra necessary data for the computation of the optimal electric field. It is separated in two sections: the keyword and the NLOPs section.
+
+The keyword section is then split into 4 lines of keywords: Method, Thermochemistry, Computation and Extra.
+-  Method: in this line we only define which kind of scan wants to be performed (X, YZ or XYZ) and the level of approximation of the FDB method expansion
