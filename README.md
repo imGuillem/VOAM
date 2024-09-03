@@ -8,11 +8,14 @@ together with the analytic solution of the cubic equation published in the 16th 
 
 $$ ax^3 + bx^2 + cx + d = 0 $$
 
-$$ x= \Gamma^n \cdot \sqrt[3]{-\frac{q}{2} \sqrt{\frac{q^2}{4}+\frac{p^3}{27}}} + \Gamma^{n+3} \cdot \sqrt[3]{-\frac{q}{2} \sqrt{\frac{q^2}{4}-\frac{p^3}{27}}} \quad \text{for} \quad n=0,1,2$$
+$$ x= \Gamma^n \cdot \sqrt[3]{-\frac{q}{2} \sqrt{\frac{q^2}{4}+\frac{p^3}{27}}} + \Gamma^{n+3} \cdot \sqrt[3]{-\frac{q}{2} \sqrt{\frac{q^2}{4}-\frac{p^3}{27}}} - \frac{b}{3a} \quad \text{for} \quad n=0,1,2$$
 
 where $\Gamma$ is the primitive cube root of unity defined as
 
 $$ \Gamma^1 = -\frac{1}{2} + i\frac{\sqrt{3}}{2} \quad \Gamma^2 = \Gamma^* = -\frac{1}{2} - i\frac{\sqrt{3}}{2} \quad \Gamma^3 = 1$$
 
+and the p and q coefficients of the general solutions read as
 
+$$ p = \frac{3ac-b^2}{3a^2} \quad q=\frac{2b^3-9abc+27a^2d}{27a^3} $$
 
+and are the consequence of making a change of variable $$ z = x-\frac{b}{3a} $$ such as the second order of the cubic equation vanishes.
