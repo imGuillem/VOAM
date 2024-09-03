@@ -7,6 +7,7 @@ $$ \Delta E^\ddagger (**F**) = \Delta E^\ddagger (**F**=0) - \sum_{i=1}^{x,y,z} 
 together with the analytic solution of the cubic equation published in the 16th Century by Cardano inspired both by del Ferro and Tartaglia's work
 
 $$ ax^3 + bx^2 + cx + d = 0 $$
+
 $$ x= $$
 
 
