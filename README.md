@@ -42,5 +42,5 @@ $$ \Delta E^\dagger (**F**) = \Delta E^\ddagger (**F**=0) - (\Delta \mu^\ddagger
 
 This equation is hard to solve analytically and there are no simple approximations to solve this equation, which forces us to separate the expression for negative and positive electric fields:
 
-$$ \Delta E^\dagger (**F**) = \Delta E^\ddagger (**F**=0) - (\Delta \mu^\ddagger_{main} + \Delta \mu^\ddagger_{smallmolecules})F^(-),1 - \frac{1}{2} \Delta \alpha F^2 - \frac{1}{6} (\Delta \beta^\ddagger_{main} + \beta^\ddagger_{smallmolecules}) F^(-),3 $$
+$$ \Delta E^\dagger (**F**) = \Delta E^\ddagger (**F**=0) - (\Delta \mu^\ddagger_{main} + \Delta \mu^\ddagger_{smallmolecules})F^{(-),1} - \frac{1}{2} \Delta \alpha F^2 - \frac{1}{6} (\Delta \beta^\ddagger_{main} + \beta^\ddagger_{smallmolecules}) F^{(-),3} $$
 
