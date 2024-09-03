@@ -11,6 +11,7 @@ $$ ax^3 + bx^2 + cx + d = 0 $$
 $$ x= \Gamma^n \cdot \sqrt[3]{-\frac{q}{2} \sqrt{\frac{q^2}{4}+\frac{p^3}{27}}} + \Gamma^{n+3} \cdot \sqrt[3]{-\frac{q}{2} \sqrt{\frac{q^2}{4}-\frac{p^3}{27}}} \quad \text{for} \quad n=0,1,2$$
 
 where $\Gamma$ is the primitive cube root of unity defined as
+
 $$ \Gamma = -\frac{1}{2} + i\frac{\sqrt{3}}{2}$$
 
 
