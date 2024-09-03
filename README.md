@@ -73,7 +73,7 @@ The keyword section is then split into 4 lines of keywords: Method, Thermochemis
         XZ plane: ("X0Z","x0z","0xz","xz0","0XZ","XZ0","xz","XZ")
       
     - 3D: Compute the optimal strength for a three-dimensiona electric field vector. It is activated with "XYZ" or "xyz"
-    - 
+      
   - Taylor: level approximation of the FDB method expansion.
     
     - First order: ("Dipole","dipole","mu","Mu")
@@ -98,14 +98,14 @@ The keyword section is then split into 4 lines of keywords: Method, Thermochemis
     
 - **Computation**:
   
-  - Initial point: Defines the
+  - Initial point: Defines the constant electric field to be considered for the computation of the energy and the NLOPs. VOAM.f95 can also detect the possible incompatibilities _i.e._ performing a 3D with constant electric fields.
     
   - Modulus: Defines the maximum modulus to be scanned and be allowed as a solution. Recommended value of 100 ($\cdot 10^{-4}$ a.u.)
     
   - Grid: The number of partitions to be applied in the $\theta$ angle of the spherical polar coordinates of the $\phi$ in the cylindrical coordinate system. Recommended value of 1000 or 2000.
-  - 
+  
 - **Extra**: at the moment is only applied for the numerical tolerance. The default value is 1E-8.
   
   - Tolerance: tolerance
 
- After the keyword section, as previously mentioned, it is followed the NLOP section. The different chemical species participating in the chemical reaction are separated by delimiters such "-#-#-#- $ Chemical species/Small molecules $: $ Reactant/Product $ -#-#-#-"
+ After the keyword section, as previously mentioned, it is followed the NLOP section. The different chemical species participating in the chemical reaction are separated by delimiters such "-#-#-#- Chemical species/Small molecules: Reactant/Product -#-#-#-".
