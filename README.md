@@ -18,4 +18,4 @@ and the p and q coefficients of the general solutions read as
 
 $$ p = \frac{3ac-b^2}{3a^2} \quad q=\frac{2b^3-9abc+27a^2d}{27a^3} $$
 
-and are the consequence of making a change of variable $ z = x-\frac{b}{3a} $ such as the second order of the cubic equation vanishes.
+and are the consequence of making a change of variable z = x-b/3a such as the second order of the cubic equation vanishes and the coefficient of the third order term is 1.
