@@ -26,11 +26,11 @@ $$ \Delta E^\ddagger_{reaction} (**F**) = \Delta E^\ddagger_{main} (**F**) + \De
 
 where the label "main" refers to those chemical species that are not easily reoriented with the electric field, opposed to the small molecules. In this regard, the "main" Maclaurin series is going to have the same shape as the first equation (_vide supra_) but the "small molecules" expansion in one dimension reads as
 
-$$ \Delta E^\ddagger (**F**) = \Delta E^\ddagger (**F**=0) - \Delta \mu |F| - \frac{1}{2} \alpha |F^2| - \frac{1}{6} \beta |F^3| $$
+$$ \Delta E^\ddagger (**F**) = \Delta E^\ddagger (**F**=0) - \Delta \mu |F| - \frac{1}{2} \Delta \alpha |F^2| - \frac{1}{6} \Delta \beta |F^3| $$
 
 and knowing that the $|x^2|$ is still $x^2$ it can be alternatively be written as
 
-$$ \Delta E^\ddagger (**F**) = \Delta E^\ddagger (**F**=0) - \Delta \mu |F| - \frac{1}{2} \alpha F^2 - \frac{1}{6} \beta |F^3| $$
+$$ \Delta E^\ddagger (**F**) = \Delta E^\ddagger (**F**=0) - \Delta \mu \abs(F) - \frac{1}{2} \alpha F^2 - \frac{1}{6} \beta |F^3| $$
 
 In consquence, the total expression can be gathered as
 
