@@ -20,36 +20,6 @@ $$ p = \frac{3ac-b^2}{3a^2} \quad q=\frac{2b^3-9abc+27a^2d}{27a^3} $$
 
 and are the consequence of making a change of variable z = x-b/3a such as the second order of the cubic equation vanishes and the coefficient of the third order term is 1.
 
-In addition, VOAM does also consider the reorientation of small molecules along their dipole moment when an electric field is applied. Hence, the methodology applied in VOAM.f95 begins with a quick scan of the FDB method equation while considering that the effect of the electric field in small molecules is independent of the orientation of the electric field, _i.e._ acting as an absolute value. Consequently, the FDB equation is going to be different according to the orientation (sign) of the electric field:
-
-$$ \Delta E^\ddagger_{reaction} (**F**) = \Delta E^\ddagger_{main} (**F**) + \Delta E^\ddagger_{small molecules} $$
-
-where the label "main" refers to those chemical species that are not easily reoriented with the electric field, opposed to the small molecules. In this regard, the "main" Maclaurin series is going to have the same shape as the first equation (_vide supra_) but the "small molecules" expansion in one dimension reads as
-
-$$ \Delta E^\ddagger (**F**) = \Delta E^\ddagger (**F**=0) - \Delta \mu |F| - \frac{1}{2} \Delta \alpha |F^2| - \frac{1}{6} \Delta \beta |F^3| $$
-
-and knowing that the $|x^2|$ is still $x^2$ it can be alternatively be written as
-
-$$ \Delta E^\ddagger (**F**) = \Delta E^\ddagger (**F**=0) - \Delta \mu^\ddagger |F| - \frac{1}{2} \Delta \alpha^\ddagger F^2 - \frac{1}{6} \Delta \beta^\ddagger |F^3| $$
-
-In consquence, the total expression can be gathered as
-
-$$ \Delta E^\dagger (**F**) = \Delta E^\ddagger_{main} (**F**=0) - \Delta \mu^\ddagger_{main} F - \frac{1}{2} \Delta \alpha^\ddagger_{main} F^2 - \frac{1}{6} \Delta \beta^\ddagger_{main} F^3 + \Delta E^\ddagger_{smallmolecules} (**F**=0) - \Delta \mu^\ddagger_{smallmolecules} |F| - \frac{1}{2} \Delta \alpha^\ddagger_{smallmolecules} F^2 - \frac{1}{6} \beta^\ddagger_{smallmolecules} |F^3| $$
-
-or simply as
-
-$$ \Delta E^\dagger (**F**) = \Delta E^\ddagger (**F**=0) - (\Delta \mu^\ddagger_{main} F + \Delta \mu^\ddagger_{smallmolecules} |F|) - \frac{1}{2} \Delta \alpha F^2 - \frac{1}{6} (\Delta \beta^\ddagger_{main} F^3 + \beta^\ddagger_{smallmolecules} |F^3|) $$
-
-This equation is hard to solve analytically and there are no simple approximations to solve this equation, which forces us to separate the expression for negative and positive electric fields:
-
-$$ \Delta E^\dagger (**F^-**) = \Delta E^\ddagger (**F**=0) - (\Delta \mu^\ddagger_{main} + \Delta \mu^\ddagger_{smallmolecules})F^{(-),1} - \frac{1}{2} \Delta \alpha F^2 - \frac{1}{6} (\Delta \beta^\ddagger_{main} + \beta^\ddagger_{smallmolecules}) F^{(-),3} $$
-
-$$ \Delta E^\dagger (**F^+**) = \Delta E^\ddagger (**F**=0) - (\Delta \mu^\ddagger_{main} + \Delta \mu^\ddagger_{smallmolecules})F^{(+),1} - \frac{1}{2} \Delta \alpha F^2 - \frac{1}{6} (\Delta \beta^\ddagger_{main} + \beta^\ddagger_{smallmolecules}) F^{(+),3} $$
-
-So the quick scan are performed according to the just presented equations. Then, the cubic equation to be solved is tunned according to where the input target barrier is closest (and lowest field strength) to _i.e._ in the negative or positive field domain of fields.
-
-When trying to compute 2- and 3-D this approach is still applied but using the very modulus of the electric field instead of a single component of the electric field.
-
 The input file necessary for the execution of VOAM, though it may seem complex, contains enough information to compute the extra necessary data for the computation of the optimal electric field. It is separated in two sections: the keyword and the NLOPs section.
 
 The keyword section is then split into 4 lines of keywords: Method, Thermochemistry, Computation and Extra.
